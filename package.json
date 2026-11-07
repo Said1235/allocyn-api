@@ -1,0 +1,26 @@
+{
+  "name": "allocyn-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "npm test --workspaces",
+    "sync:check": "node scripts/sync-core.mjs --check",
+    "docs:build": "node docs/build.mjs",
+    "start": "npm start -w @allocyn/api",
+    "vercel:build": "npm run docs:build && node scripts/build-vercel.mjs",
+    "vercel:check": "node scripts/build-vercel.mjs --check"
+  },
+  "dependencies": {
+    "genlayer-js": "^1.1.8"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "markdown-it": "^14.1.0"
+  }
+}
