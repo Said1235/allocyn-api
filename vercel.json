@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run vercel:build",
+  "outputDirectory": "public",
+  "installCommand": "npm install",
+  "functions": { "api/index.mjs": { "maxDuration": 30 } },
+  "redirects": [
+    { "source": "/", "destination": "/docs/", "statusCode": 302 },
+    { "source": "/docs", "destination": "/docs/", "statusCode": 302 }
+  ],
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "/api/index.mjs" }
+  ]
+}
