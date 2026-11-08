@@ -287,6 +287,57 @@ function loadLinks() {
   return { appUrl: pick("ALLOCYN_APP_URL", "appUrl"), repoUrl: pick("ALLOCYN_REPO_URL", "repoUrl") };
 }
 
+/* ---------------- landing: animated terminal and animated job flow ---------------- */
+const pretty = (o) => JSON.stringify(o, null, 2);
+function terminalScenes(ex, shown) {
+  const lim = ex["/v1/limits"]?.body?.data ?? {};
+  const limShown = { success: true, data: { source: lim.source, matchesPinned: lim.matchesPinned, contract: lim.contract } };
+  return [
+    { cmd: 'curl -s "$API/v1/jobs/job-1"', status: 200, out: shown },
+    { cmd: 'curl -s "$API/v1/jobs/job-99"', status: ex.__notfound.status, out: pretty(ex.__notfound.body) },
+    { cmd: 'curl -s "$API/v1/limits"', status: 200, out: pretty(limShown) },
+  ];
+}
+function terminalHtml(scenes) {
+  const data = JSON.stringify(scenes).replace(/</g, "\\u003c");
+  const first = scenes[0];
+  const rows = Math.max(...scenes.map((x) => x.out.split("\n").length)) + 2;
+  return `<div class="term" id="term" role="group" aria-label="Terminal showing three example requests to the API. Simulated data.">
+  <div class="bar"><span class="ttl">terminal</span><b id="term-status">${first.status}</b><button class="tctl" id="term-pause" type="button" aria-pressed="false" hidden>Pause</button></div>
+  <pre class="screen" id="term-screen" aria-hidden="true" style="--rows:${rows}"><span class="p">$ </span>${esc(first.cmd)}\n${esc(first.out)}</pre>
+  <div class="sim">Simulated session: the answers come from the test double of the contract.</div>
+  <script type="application/json" id="term-data">${data}</script></div>`;
+}
+const FLOW_STEPS = [
+  { tab: "Write terms", title: "The client writes the job", text: "<code>createJob</code> stores the title, the description and 1 to 20 written criteria. The job is <b>OPEN</b>." },
+  { tab: "Accept", title: "A worker accepts it", text: "<code>acceptJob</code> records the worker, who cannot be the client. The job is <b>IN_PROGRESS</b>." },
+  { tab: "Deliver", title: "The worker delivers a public link", text: "<code>submitDelivery</code> stores the URL and opens a receipt in <b>PENDING</b>. Nothing has been judged yet." },
+  { tab: "Judge", title: "Validators judge each criterion", text: "<code>evaluateDelivery</code> makes validators read the page and mark every criterion <b>MET</b>, <b>NOT_MET</b> or <b>UNVERIFIABLE</b>. One NOT_MET makes the job <b>NEEDS_REVISION</b>." },
+  { tab: "Revise", title: "One more delivery is allowed", text: "The result was not final, so the worker sends a corrected link. A job takes at most 2 deliveries; this is the last." },
+  { tab: "Verified", title: "Every criterion is met", text: "The job is <b>VERIFIED</b> and final: it accepts no more deliveries. Any app or agent can read it with <code>GET /v1/jobs/job-1</code>." },
+];
+function flowHtml() {
+  const node = (id, x, y, w, h, title, sub) => `<g class="node" id="n-${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/><text class="t" x="${x + w / 2}" y="${y + (sub ? h / 2 - 3 : h / 2 + 5)}" text-anchor="middle">${title}</text>${sub ? `<text class="s" x="${x + w / 2}" y="${y + h / 2 + 15}" text-anchor="middle">${sub}</text>` : ""}</g>`;
+  const chips = ["C1", "C2", "C3"].map((c, i) => `<g class="chip" data-state="idle" id="chip-${i}" transform="translate(${276 + i * 70} 262)"><rect width="66" height="34" rx="8"/><text class="c" x="33" y="14" text-anchor="middle">${c}</text><text class="v" x="33" y="27" text-anchor="middle">-</text></g>`).join("");
+  const tabs = FLOW_STEPS.map((s, i) => `<button type="button" class="ftab" data-i="${i}" aria-label="Step ${i + 1}: ${esc(s.tab)}"><span class="n">${i + 1}</span><span class="l">${esc(s.tab)}</span></button>`).join("");
+  return `<div class="flow" id="flow" data-step="0">
+  <div class="flow-tabs" role="group" aria-label="Steps of a job">${tabs}</div>
+  <svg viewBox="0 0 760 330" role="img" aria-label="Animated walkthrough of a job between a client, a worker, the Allocyn contract and the validators. The caption under the picture describes each step.">
+    <path class="wire" d="M170 72H290"/><path class="wire" d="M590 72H470"/><path class="wire" d="M380 130V232"/>
+    ${node("client", 20, 40, 150, 64, "Client", "writes the terms")}${node("worker", 590, 40, 150, 64, "Worker", "delivers a link")}
+    <g class="node contract" id="n-contract"><rect x="290" y="22" width="180" height="108" rx="14"/><text class="t" x="380" y="48" text-anchor="middle">Allocyn contract</text>
+      <g id="status" data-tone="gold"><rect x="310" y="62" width="140" height="30" rx="15"/><text id="status-text" x="380" y="82" text-anchor="middle">OPEN</text></g>
+      <text class="s" id="deliv" x="380" y="116" text-anchor="middle">deliveries 0 of 2</text></g>
+    <g class="node" id="n-validators"><rect x="270" y="232" width="220" height="82" rx="12"/><text class="t" x="380" y="251" text-anchor="middle" style="font-size:13px">Validators</text></g>
+    ${chips}
+    <g class="pkt" id="pkt"><rect width="112" height="26" rx="13" x="-56" y="-13"/><text id="pkt-text" text-anchor="middle" y="5">createJob</text></g>
+  </svg>
+  <div class="flow-cap"><div id="flow-cap" aria-live="off"><h3 id="cap-title">${FLOW_STEPS[0].title}</h3><p id="cap-text">${FLOW_STEPS[0].text}</p></div>
+    <div class="flow-ctl"><button type="button" id="f-prev" aria-label="Previous step">Back</button><button type="button" id="f-play" aria-pressed="true">Pause</button><button type="button" id="f-next" aria-label="Next step">Next</button></div></div>
+  <script type="application/json" id="flow-data">${JSON.stringify(FLOW_STEPS).replace(/</g, "\\u003c")}</script>
+  <p class="sim">Illustrative walkthrough of one job, not a live one.</p></div>`;
+}
+
 async function landingHtml(links) {
   const ex = (await simulatedExamples());
   const job = ex["/v1/jobs/{jobId}"].body.data;
@@ -305,20 +356,19 @@ async function landingHtml(links) {
 <title>Allocyn API and SDK</title><meta name="description" content="Read Allocyn jobs, receipts and transactions from any app or agent. Writes are signed by your own wallet.">
 <link rel="icon" href="${LOGO}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"></head>
+<script>document.documentElement.classList.add("js")</script><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"></head>
 <body class="lp"><a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="index.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a>
-<nav class="nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="faq.html">FAQ</a></nav><span class="spacer"></span>
+<nav class="nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
 ${links.appUrl ? `<a class="btn" style="height:36px;padding:0 16px;font-size:14px" href="${esc(links.appUrl)}" rel="noopener">Open the app</a>` : ""}
 <button class="icon" id="theme" type="button"></button></header>
 <main id="main">
 <section class="hero"><div class="wrap hero-grid">
   <div><h1>Verified work, readable by any app or agent.</h1>
   <p class="lede">The Allocyn API reads jobs, receipts and transaction status straight from the contract. The SDK sends writes, signed by your own wallet.</p>
-  <div class="cta"><a class="btn primary" href="quickstart.html">Start with the quickstart</a><a class="btn" href="rest-reference.html">REST reference</a>${ext("Open the app", links.appUrl, false)}${ext("View the repository", links.repoUrl, false)}</div>
+  <div class="cta"><a class="btn primary" href="quickstart.html">Start with the quickstart</a><a class="btn" href="rest-reference.html">REST reference</a>${ext("Open the app", links.appUrl, false)}${ext("View on GitHub", links.repoUrl, false)}</div>
   <p class="fine">Studionet only. The API is read-only, holds no keys and no database.</p></div>
-  <div class="instrument" role="img" aria-label="Example response of GET /v1/jobs/job-1: a verified job with its per-criterion results. Simulated data.">${rings}
-    <div class="sheet"><div class="bar"><span>GET /v1/jobs/job-1</span><b>200</b></div><pre>${esc(shown)}</pre><div class="sim">Simulated example, from the test double of the contract.</div></div></div>
+  <div class="instrument">${rings}${terminalHtml(terminalScenes(ex, shown))}</div>
 </div></section>
 
 <section class="block" id="start"><div class="wrap"><h2>Use it in three steps</h2><p class="sub">No account and no API key. Reading needs nothing; writing needs the wallet of whoever is acting.</p>
@@ -334,8 +384,8 @@ ${links.appUrl ? `<a class="btn" style="height:36px;padding:0 16px;font-size:14p
 <div class="door"><h3>SDK (<code>@allocyn/sdk</code>)</h3><p class="who">reads + writes · the participant signs</p><ul><li>Create, accept, deliver, evaluate</li><li>Typed errors that keep the transaction hash</li><li>Never resends on its own, never invents an id</li></ul><a class="btn" href="sdk-reference.html">Open the reference</a></div>
 </div></div></section>
 
-<section class="block"><div class="wrap"><h2>How a job moves</h2><p class="sub">A client writes the terms, a worker delivers a public link, validators judge it against the criteria. Up to two deliveries per job.</p>
-<figure class="diagram" style="margin:0">${DIAGRAMS.job}</figure></div></section>
+<section class="block"><div class="wrap"><h2>How a job moves</h2><p class="sub">Watch one job from the first line of terms to a verified result. Press a step to jump to it.</p>
+${flowHtml()}<noscript><figure class="diagram" style="margin:0">${DIAGRAMS.job}</figure></noscript></div></section>
 
 <section class="block"><div class="wrap"><h2>Endpoints at a glance</h2><p class="sub">All <code>GET</code>. Generated from the same route table the server uses.</p>
 <table><thead><tr><th>Endpoint</th><th>What it returns</th></tr></thead><tbody>${endpoints}</tbody></table></div></section>
@@ -353,9 +403,10 @@ ${links.appUrl ? `<a class="btn" style="height:36px;padding:0 16px;font-size:14p
 <section class="block closing"><div class="wrap"><h2>Ready to read your first job?</h2><div class="cta"><a class="btn primary" href="quickstart.html">Quickstart</a><a class="btn" href="introduction.html">Read the docs</a><a class="btn" href="/openapi.json">OpenAPI JSON</a>${ext("Open the app", links.appUrl, false)}${ext("View the repository", links.repoUrl, false)}</div></div></section>
 </main>
 <footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
-<script src="app.js"></script></body></html>`;
+<script src="app.js"></script><script src="landing.js"></script></body></html>`;
 }
 fs.copyFileSync(path.join(here, "assets/landing.css"), path.join(OUT, "landing.css"));
+fs.copyFileSync(path.join(here, "assets/landing.js"), path.join(OUT, "landing.js"));
 fs.writeFileSync(path.join(OUT, "index.html"), await landingHtml(loadLinks()));
 fs.writeFileSync(path.join(OUT, "search-index.json"), JSON.stringify(index));
 console.log(`docs built: ${rendered.length} pages -> ${path.relative(process.cwd(), OUT)}`);

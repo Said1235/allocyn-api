@@ -114,11 +114,14 @@ test("landing: app and repo links appear only when configured, and must be https
     build({});
     let html = read("index.html");
     assert.match(html, /readable by any app or agent/);
-    assert.ok(!/Open the app|View the repository/.test(html), "no dead placeholder links");
+    assert.ok(!/Open the app/.test(html), "no app button while appUrl is not configured");
+    const cfg = JSON.parse(fs.readFileSync(path.join(here, "../site.config.json"), "utf8"));
+    if (cfg.repoUrl) assert.ok(html.includes(`href="${cfg.repoUrl}"`) && html.includes("View on GitHub"), "the configured repository is linked");
+    else assert.ok(!/View on GitHub/.test(html), "no dead placeholder links");
     build({ ALLOCYN_APP_URL: "https://app.example.org/", ALLOCYN_REPO_URL: "https://github.com/example/allocyn" });
     html = read("index.html");
     assert.ok(html.includes('href="https://app.example.org/"') && html.includes("Open the app"));
-    assert.ok(html.includes('href="https://github.com/example/allocyn"') && html.includes("View the repository"));
+    assert.ok(html.includes('href="https://github.com/example/allocyn"') && html.includes("View on GitHub"));
     assert.throws(() => build({ ALLOCYN_APP_URL: "http://insecure.example" }));
     assert.throws(() => build({ ALLOCYN_REPO_URL: "not a url" }));
   } finally { build({}); }
