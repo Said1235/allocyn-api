@@ -10,6 +10,7 @@ import { matchRoute } from "./routes.ts";
 import type { Ctx } from "./routes.ts";
 import { buildOpenApi } from "./openapi.ts";
 import { makeCtx } from "./context.ts";
+import { parseQuery } from "./params.ts";
 import { createMcpHandler } from "./mcp.ts";
 import { errorBadge } from "./badge.ts";
 
@@ -19,6 +20,8 @@ export interface ServerDeps {
   /** Static docs site: returns {status, type, body} for a path, or null. */
   docs?: (pathname: string) => { status: number; type: string; body: string | Buffer } | null;
   now?: () => number;
+  /** Test seam: how often a long poll re-reads the contract (ms). */
+  waitPollMs?: number;
   /** Test seam for the shared rate-limit store. */
   fetch?: typeof fetch;
   log?: (line: Record<string, unknown>) => void;
@@ -78,7 +81,7 @@ export function createApiHandler(deps: ServerDeps): (req: http.IncomingMessage, 
   };
 
   const ctxFor = (params: Record<string, string>, query: URLSearchParams): Ctx =>
-    makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now }, params, query);
+    makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...(deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}) }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
 
   return async (req, res) => {
@@ -156,10 +159,11 @@ export function createApiHandler(deps: ServerDeps): (req: http.IncomingMessage, 
       }
 
       const { route, params } = m;
-      const allowed = new Set<string>([...(route.chainRead ? ["consistency"] : []), ...(route.deep ? ["deep"] : [])]);
+      const allowed = new Set<string>([...(route.chainRead ? ["consistency"] : []), ...(route.deep ? ["deep"] : []), ...(route.query ?? []).map((q) => q.name)]);
       for (const k of url.searchParams.keys()) {
         if (!allowed.has(k)) throw new ApiError(400, "INVALID_ARGUMENT", `Unknown query parameter "${k}".`, { field: k });
       }
+      parseQuery(route, url.searchParams);
       let consistency = config.readConsistency;
       if (route.chainRead && url.searchParams.has("consistency")) {
         const c = url.searchParams.get("consistency");

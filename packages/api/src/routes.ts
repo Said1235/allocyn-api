@@ -2,6 +2,9 @@ import type { AllocynClient } from "@allocyn/sdk";
 import { ApiError } from "./http.ts";
 import { buildProof, isFinalJob } from "./proof.ts";
 import { buildBadge } from "./badge.ts";
+import { listJobs, LIST_QUERY } from "./jobs-list.ts";
+import { waitForJob, WAIT_QUERY } from "./wait.ts";
+import type { QueryParam } from "./params.ts";
 
 /**
  * The route table is the single source of truth: the router, the OpenAPI document and the
@@ -16,6 +19,10 @@ export interface Ctx {
   defaultConsistency: "latest" | "final";
   probe: () => Promise<void>;
   now: () => Date;
+  /** The request timeout in ms: long-running handlers must answer before it. */
+  timeoutMs: number;
+  /** How often a waiting handler re-reads the contract, in ms. */
+  pollMs: number;
 }
 export interface Route {
   method: "GET";
@@ -25,6 +32,8 @@ export interface Route {
   summary: string;
   description: string;
   pathParams: Param[];
+  /** Extra query parameters (besides consistency and deep), validated by params.ts. */
+  query?: QueryParam[];
   /** Does this route accept ?consistency= ? */
   chainRead: boolean;
   /** Does this route accept ?deep= ? */
@@ -74,6 +83,12 @@ export const ROUTES: Route[] = [
     handler: async (ctx, c) => ctx.client(c).getLimits(),
   },
   {
+    method: "GET", path: "/v1/jobs", operationId: "listJobs", tag: "Jobs", summary: "List jobs",
+    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped.",
+    pathParams: [], query: LIST_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobList", errors: [400, 429, 502],
+    handler: async (ctx, c) => listJobs(ctx, c),
+  },
+  {
     method: "GET", path: "/v1/jobs/{jobId}", operationId: "getJob", tag: "Jobs", summary: "Read a job",
     description: "The job's terms, parties, status and receipt ids, read from the contract. `integrity` reports whether the hashes recompute from the returned terms.",
     pathParams: [jobId], chainRead: true, cache: "no-store", schemaRef: "Job", errors: [400, 404, 429, 502], finalWhen: (d) => isFinalJob(d),
@@ -90,6 +105,12 @@ export const ROUTES: Route[] = [
     description: "A small SVG badge with the job's status, for a README or a portfolio: `![job](https://your-api/v1/jobs/job-1/badge.svg)`. It says what the contract says right now and nothing more. A missing or invalid job still answers with a badge, with the matching status code.",
     pathParams: [jobId], chainRead: true, cache: "short", schemaRef: "Badge", errors: [400, 404, 429, 502], mcp: false, contentType: "image/svg+xml",
     handler: async (ctx, c) => buildBadge(ctx, c),
+  },
+  {
+    method: "GET", path: "/v1/jobs/{jobId}/wait", operationId: "waitForJob", tag: "Jobs", summary: "Wait for a job to change",
+    description: "Long poll, instead of webhooks. Call it once without `since` to get the job and its `version`; call it again with that `version` as `since` and it answers when the job changes (a worker accepted, a delivery came in, validators judged) or when the wait ends with `changed: false`. Nothing is stored: if you miss an answer, ask again. The wait is capped by `timeout` (at most 25 s) and by the server's request timeout.",
+    pathParams: [jobId], query: WAIT_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobWait", errors: [400, 404, 429, 502, 504],
+    handler: async (ctx, c) => waitForJob(ctx, c),
   },
   {
     method: "GET", path: "/v1/jobs/{jobId}/receipts", operationId: "listJobReceipts", tag: "Receipts", summary: "List a job's receipts",

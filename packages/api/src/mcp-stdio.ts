@@ -21,7 +21,7 @@ async function main() {
     createAllocynClient({ ...base, readConsistency: "final" }),
   ]);
   const mcp = createMcpHandler({
-    makeCtx: (params, query) => makeCtx({ clients: { latest, final }, defaultConsistency: config.readConsistency, now: Date.now }, params, query),
+    makeCtx: (params, query) => makeCtx({ clients: { latest, final }, defaultConsistency: config.readConsistency, now: Date.now, timeoutMs: config.requestTimeoutMs }, params, query),
     defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs,
   });
   console.error(JSON.stringify({ level: "info", msg: "allocyn-mcp ready (stdio)", network: config.network, contract: latest.contractAddress }));

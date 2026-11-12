@@ -1,6 +1,7 @@
 import { ROUTES } from "./routes.ts";
 import type { Ctx, Route } from "./routes.ts";
 import { ApiError, errorBody, toApiError } from "./http.ts";
+import { parseQuery } from "./params.ts";
 
 /**
  * A minimal Model Context Protocol server (JSON-RPC 2.0) with no dependencies. Its tools are generated
@@ -8,7 +9,7 @@ import { ApiError, errorBody, toApiError } from "./http.ts";
  * the same errors. All tools are read-only: nothing here can sign or send a transaction.
  */
 export const MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
-export const MCP_SERVER_VERSION = "1.1.0";
+export const MCP_SERVER_VERSION = "1.2.0";
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 interface Rpc { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown> }
@@ -28,6 +29,7 @@ export function buildTools(): McpTool[] {
     const properties: Record<string, unknown> = {};
     for (const p of r.pathParams) properties[p.name] = { ...p.schema, description: p.description, examples: [p.example] };
     if (r.chainRead) properties.consistency = { type: "string", enum: ["latest", "final"], description: '"latest" (default) includes non-final state; "final" reads finalized state only.' };
+    for (const q of r.query ?? []) properties[q.name] = { type: q.schema.type, ...(q.schema.enum ? { enum: q.schema.enum } : {}), ...(q.schema.pattern ? { pattern: q.schema.pattern } : {}), ...(q.schema.minimum !== undefined ? { minimum: q.schema.minimum } : {}), ...(q.schema.maximum !== undefined ? { maximum: q.schema.maximum } : {}), description: q.description, examples: [q.example] };
     if (r.deep) properties.deep = { type: "boolean", description: "Also read the contract once and report whether the network answers." };
     return {
       name: snake(r.operationId), title: r.summary,
@@ -50,7 +52,7 @@ function parseArgs(tool: McpTool, args: unknown): { params: Record<string, strin
   if (args === undefined || args === null) args = {};
   if (typeof args !== "object" || Array.isArray(args)) throw new ApiError(400, "INVALID_ARGUMENT", "arguments must be an object.");
   const a = args as Record<string, unknown>;
-  const known = new Set<string>([...r.pathParams.map((p) => p.name), ...(r.chainRead ? ["consistency"] : []), ...(r.deep ? ["deep"] : [])]);
+  const known = new Set<string>([...r.pathParams.map((p) => p.name), ...(r.chainRead ? ["consistency"] : []), ...(r.deep ? ["deep"] : []), ...(r.query ?? []).map((q) => q.name)]);
   for (const k of Object.keys(a)) if (!known.has(k)) throw new ApiError(400, "INVALID_ARGUMENT", `Unknown argument "${k}".`, { field: k });
   const params: Record<string, string> = {};
   for (const p of r.pathParams) {
@@ -75,6 +77,14 @@ function parseArgs(tool: McpTool, args: unknown): { params: Record<string, strin
     if (typeof a.deep !== "boolean") throw new ApiError(400, "INVALID_ARGUMENT", "deep must be true or false.", { field: "deep" });
     query.set("deep", String(a.deep));
   }
+  for (const q of r.query ?? []) {
+    const v = a[q.name];
+    if (v === undefined) continue;
+    const t = q.schema.type;
+    if ((t === "integer" && typeof v !== "number") || (t === "boolean" && typeof v !== "boolean") || (t === "string" && typeof v !== "string")) throw new ApiError(400, "INVALID_ARGUMENT", `${q.name} must be a ${t === "integer" ? "whole number" : t}.`, { field: q.name });
+    query.set(q.name, String(v));
+  }
+  parseQuery(r, query);
   return { params, query, consistency };
 }
 

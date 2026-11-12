@@ -5,15 +5,26 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "engines": { "node": ">=22.6" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts src/core/contract/*.test.ts src/core/domain/*.test.ts",
     "sync": "node ../../scripts/sync-core.mjs",
-    "sync:check": "node ../../scripts/sync-core.mjs --check"
+    "sync:check": "node ../../scripts/sync-core.mjs --check",
+    "build": "node scripts/build.mjs"
   },
-  "peerDependencies": { "genlayer-js": "^1.1.8" },
-  "peerDependenciesMeta": { "genlayer-js": { "optional": true } },
+  "peerDependencies": {
+    "genlayer-js": "^1.1.8"
+  },
+  "peerDependenciesMeta": {
+    "genlayer-js": {
+      "optional": true
+    }
+  },
   "license": "UNLICENSED",
   "private": true
 }

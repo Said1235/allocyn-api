@@ -2,3 +2,5 @@ node_modules
 docs/dist
 .env
 public/
+packages/*/dist
+.stage

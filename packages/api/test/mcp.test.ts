@@ -139,7 +139,7 @@ test("buildTools names are unique snake_case", () => {
 test("stdio transport: one message per line, notifications silent, bad lines answered with a parse error, nothing else on the output", async () => {
   const mk = (c: "latest" | "final") => createAllocynClient({ gateway: sim, actor: null, readConsistency: c });
   const clients = { latest: await mk("latest"), final: await mk("final") };
-  const handler = createMcpHandler({ makeCtx: (p, q) => makeCtx({ clients, defaultConsistency: "latest", now: Date.now }, p, q), defaultConsistency: "latest", timeoutMs: 5000 });
+  const handler = createMcpHandler({ makeCtx: (p, q) => makeCtx({ clients, defaultConsistency: "latest", now: Date.now, timeoutMs: 5000 }, p, q), defaultConsistency: "latest", timeoutMs: 5000 });
   const input = new PassThrough(), output = new PassThrough();
   let out = ""; output.on("data", (d) => { out += d; });
   const done = serveStdio(handler, input, output);

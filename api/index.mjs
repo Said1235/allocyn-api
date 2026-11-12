@@ -873,18 +873,18 @@ var ChainRepository = class {
   }
   /** Highest existing job number, found by galloping then bisecting (ids are dense). 0 if none. */
   async lastJobNumber() {
-    const exists = async (n) => await this.readJobOrNull(`job-${n}`) !== null;
-    if (!await exists(1)) return 0;
+    const exists2 = async (n) => await this.readJobOrNull(`job-${n}`) !== null;
+    if (!await exists2(1)) return 0;
     let lo = 1;
     let hi = 2;
-    while (await exists(hi)) {
+    while (await exists2(hi)) {
       lo = hi;
       hi *= 2;
       if (hi > SCAN_LIMIT * 2) throw new ReadError("bad_data", "The contract reports more agreements than this app will read.");
     }
     while (hi - lo > 1) {
       const mid = Math.floor((lo + hi) / 2);
-      if (await exists(mid)) lo = mid;
+      if (await exists2(mid)) lo = mid;
       else hi = mid;
     }
     return lo;
@@ -1889,7 +1889,7 @@ var SharedRateLimiter = class {
 };
 
 // packages/api/src/server.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 
 // packages/api/src/proof.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -1988,6 +1988,128 @@ function errorBadge(status) {
   return renderBadge("allocyn", m, t, `Allocyn badge: ${m}`);
 }
 
+// packages/api/src/params.ts
+function parseQuery(route, raw) {
+  const out = {};
+  for (const q of route.query ?? []) {
+    const v = raw.get(q.name);
+    if (v === null) continue;
+    const s = q.schema;
+    const bad3 = (msg) => new ApiError(400, "INVALID_ARGUMENT", `${q.name} ${msg}`, { field: q.name });
+    if (s.type === "integer") {
+      if (!/^-?[0-9]{1,9}$/.test(v)) throw bad3("must be a whole number.");
+      const n = Number(v);
+      if (s.minimum !== void 0 && n < s.minimum || s.maximum !== void 0 && n > s.maximum) throw bad3(`must be between ${s.minimum ?? "-\u221E"} and ${s.maximum ?? "\u221E"}.`);
+    } else if (s.type === "boolean") {
+      if (v !== "true" && v !== "false") throw bad3('must be "true" or "false".');
+    } else {
+      if (s.enum && !s.enum.includes(v)) throw bad3(`must be one of: ${s.enum.join(", ")}.`);
+      if (s.pattern && !new RegExp(s.pattern).test(v)) throw bad3(`is not valid. ${q.description}`);
+    }
+    out[q.name] = v;
+  }
+  return out;
+}
+
+// packages/api/src/jobs-list.ts
+var SCAN_LIMIT2 = 100;
+var CHUNK = 10;
+var LATEST_TTL_MS = 15e3;
+var latestCache = /* @__PURE__ */ new WeakMap();
+async function exists(client, n) {
+  try {
+    await client.getJob(`job-${n}`);
+    return true;
+  } catch (e) {
+    if (e instanceof AllocynError && e.code === "JOB_NOT_FOUND") return false;
+    throw e;
+  }
+}
+async function latestJobNumber(client, now) {
+  const hit = latestCache.get(client);
+  if (hit && now - hit.at < LATEST_TTL_MS) return hit.n;
+  let n = 0;
+  if (await exists(client, 1)) {
+    let lo = 1, hi = 2;
+    while (hi < 1 << 22 && await exists(client, hi)) {
+      lo = hi;
+      hi *= 2;
+    }
+    while (hi - lo > 1) {
+      const mid = lo + Math.floor((hi - lo) / 2);
+      if (await exists(client, mid)) lo = mid;
+      else hi = mid;
+    }
+    n = lo;
+  }
+  latestCache.set(client, { n, at: now });
+  return n;
+}
+async function listJobs(ctx, consistency) {
+  const client = ctx.client(consistency);
+  const q = parseQuery({ query: LIST_QUERY }, ctx.query);
+  const limit = q.limit ? Number(q.limit) : 20;
+  const latest = await latestJobNumber(client, ctx.now().getTime());
+  const start = Math.min(latest, q.before ? Number(q.before.slice(4)) - 1 : latest);
+  const items = [];
+  let next = start, nextCursor = null, scanned = 0;
+  scan: while (next >= 1 && scanned < SCAN_LIMIT2) {
+    const ids = [];
+    for (let i = next; i >= 1 && ids.length < CHUNK && scanned + ids.length < SCAN_LIMIT2; i--) ids.push(i);
+    const jobs = await Promise.all(ids.map((n) => client.getJob(`job-${n}`).catch((e) => {
+      if (e instanceof AllocynError && e.code === "JOB_NOT_FOUND") return null;
+      throw e;
+    })));
+    for (let k = 0; k < ids.length; k++) {
+      const j = jobs[k];
+      scanned++;
+      next = ids[k] - 1;
+      if (!j) continue;
+      if (q.status && j.status !== q.status) continue;
+      if (q.client && j.client !== q.client.toLowerCase()) continue;
+      if (q.worker && (j.worker ?? "") !== q.worker.toLowerCase()) continue;
+      items.push({ id: j.id, title: j.title, status: j.status, client: j.client, worker: j.worker, deliveryCount: j.deliveryCount });
+      if (items.length >= limit) break scan;
+    }
+  }
+  if (next >= 1) nextCursor = `job-${next + 1}`;
+  return { items, nextCursor, latest: latest ? `job-${latest}` : null, scanned };
+}
+var LIST_QUERY = [
+  { name: "limit", description: "How many jobs to return, 1 to 50 (default 20).", schema: { type: "integer", minimum: 1, maximum: 50 }, example: "20" },
+  { name: "before", description: "Cursor: only jobs older than this id. Use the `nextCursor` of the previous page.", schema: { type: "string", pattern: "^job-[1-9][0-9]{0,8}$" }, example: "job-10" },
+  { name: "status", description: "Only jobs in this status.", schema: { type: "string", enum: ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"] }, example: "VERIFIED" },
+  { name: "client", description: "Only jobs created by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "a1".repeat(20) },
+  { name: "worker", description: "Only jobs accepted by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
+];
+
+// packages/api/src/wait.ts
+import { createHash as createHash3 } from "node:crypto";
+var WAIT_QUERY = [
+  { name: "since", description: "The `version` returned by the previous call. Leave it out on the first call: the answer is immediate.", schema: { type: "string", pattern: "^[0-9a-f]{16}$" }, example: "0123456789abcdef" },
+  { name: "timeout", description: "How many seconds to wait for a change, 1 to 25 (default 15). The server may use less: it always answers before `REQUEST_TIMEOUT_MS`.", schema: { type: "integer", minimum: 1, maximum: 25 }, example: "15" }
+];
+function jobVersion(job) {
+  return createHash3("sha256").update(canonicalJson2({ status: job.status, deliveryCount: job.deliveryCount, worker: job.worker, receiptIds: job.receiptIds }), "utf8").digest("hex").slice(0, 16);
+}
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function waitForJob(ctx, consistency) {
+  const q = parseQuery({ query: WAIT_QUERY }, ctx.query);
+  const client = ctx.client(consistency);
+  const id = ctx.params.jobId;
+  const asked = q.timeout ? Number(q.timeout) : 15;
+  const waitMs = Math.max(0, Math.min(asked * 1e3, ctx.timeoutMs - 2500));
+  const started = Date.now();
+  for (; ; ) {
+    const job = await client.getJob(id);
+    const version = jobVersion(job);
+    const waited = Math.round((Date.now() - started) / 100) / 10;
+    if (!q.since || version !== q.since) return { changed: !!q.since, version, waitedSeconds: waited, job };
+    if (Date.now() - started + ctx.pollMs >= waitMs) return { changed: false, version, waitedSeconds: waited, job };
+    await sleep(ctx.pollMs);
+  }
+}
+
 // packages/api/src/routes.ts
 var jobId = { name: "jobId", description: 'Job id, e.g. "job-1". Ids are assigned by the contract: never invent one.', schema: { type: "string", pattern: "^job-[1-9][0-9]*$" }, example: "job-1" };
 var receiptId = { name: "receiptId", description: 'Receipt id, e.g. "rcpt-1".', schema: { type: "string", pattern: "^rcpt-[1-9][0-9]*$" }, example: "rcpt-1" };
@@ -2050,6 +2172,21 @@ var ROUTES = [
   },
   {
     method: "GET",
+    path: "/v1/jobs",
+    operationId: "listJobs",
+    tag: "Jobs",
+    summary: "List jobs",
+    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped.",
+    pathParams: [],
+    query: LIST_QUERY,
+    chainRead: true,
+    cache: "no-store",
+    schemaRef: "JobList",
+    errors: [400, 429, 502],
+    handler: async (ctx, c) => listJobs(ctx, c)
+  },
+  {
+    method: "GET",
     path: "/v1/jobs/{jobId}",
     operationId: "getJob",
     tag: "Jobs",
@@ -2093,6 +2230,21 @@ var ROUTES = [
     mcp: false,
     contentType: "image/svg+xml",
     handler: async (ctx, c) => buildBadge(ctx, c)
+  },
+  {
+    method: "GET",
+    path: "/v1/jobs/{jobId}/wait",
+    operationId: "waitForJob",
+    tag: "Jobs",
+    summary: "Wait for a job to change",
+    description: "Long poll, instead of webhooks. Call it once without `since` to get the job and its `version`; call it again with that `version` as `since` and it answers when the job changes (a worker accepted, a delivery came in, validators judged) or when the wait ends with `changed: false`. Nothing is stored: if you miss an answer, ask again. The wait is capped by `timeout` (at most 25 s) and by the server's request timeout.",
+    pathParams: [jobId],
+    query: WAIT_QUERY,
+    chainRead: true,
+    cache: "no-store",
+    schemaRef: "JobWait",
+    errors: [400, 404, 429, 502, 504],
+    handler: async (ctx, c) => waitForJob(ctx, c)
   },
   {
     method: "GET",
@@ -2231,6 +2383,9 @@ var SCHEMAS = {
     verify: { type: "array", items: str2 },
     notes: { type: "array", items: str2 }
   }),
+  JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str2, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int3 }),
+  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int3, description: "How many job ids were read for this page." } }),
+  JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
     id: { type: "string", pattern: "^job-[1-9][0-9]*$" },
@@ -2277,13 +2432,15 @@ var ERROR_TEXT = {
   404: "Not found.",
   429: "Rate limit exceeded. See Retry-After.",
   502: "The network or contract answered badly or not at all.",
-  503: "The network did not answer."
+  503: "The network did not answer.",
+  504: "The network took too long to answer."
 };
 function buildOpenApi(cfg) {
   const paths = {};
   for (const r of ROUTES) {
     const parameters = r.pathParams.map((p) => ({ name: p.name, in: "path", required: true, description: p.description, schema: p.schema, example: p.example }));
     if (r.chainRead) parameters.push({ name: "consistency", in: "query", required: false, description: '"latest" (default) includes non-final state; "final" reads finalized state only (genlayer-js `latest-final`).', schema: { type: "string", enum: ["latest", "final"] } });
+    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: false, description: q.description, schema: { type: q.schema.type, ...q.schema.enum ? { enum: q.schema.enum } : {}, ...q.schema.pattern ? { pattern: q.schema.pattern } : {}, ...q.schema.minimum !== void 0 ? { minimum: q.schema.minimum } : {}, ...q.schema.maximum !== void 0 ? { maximum: q.schema.maximum } : {} }, example: q.example });
     if (r.deep) parameters.push({ name: "deep", in: "query", required: false, description: "`true` also reads the contract once.", schema: { type: "string", enum: ["true", "false"] } });
     const responses = {
       "200": {
@@ -2301,7 +2458,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.1.0",
+      version: "1.2.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2325,19 +2482,22 @@ function makeCtx(deps, params, query) {
         if (e.code !== "JOB_NOT_FOUND") throw e;
       }
     },
-    now: () => new Date(deps.now())
+    now: () => new Date(deps.now()),
+    timeoutMs: deps.timeoutMs,
+    pollMs: deps.pollMs ?? 1500
   };
 }
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.1.0";
+var MCP_SERVER_VERSION = "1.2.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {
     const properties = {};
     for (const p of r.pathParams) properties[p.name] = { ...p.schema, description: p.description, examples: [p.example] };
     if (r.chainRead) properties.consistency = { type: "string", enum: ["latest", "final"], description: '"latest" (default) includes non-final state; "final" reads finalized state only.' };
+    for (const q of r.query ?? []) properties[q.name] = { type: q.schema.type, ...q.schema.enum ? { enum: q.schema.enum } : {}, ...q.schema.pattern ? { pattern: q.schema.pattern } : {}, ...q.schema.minimum !== void 0 ? { minimum: q.schema.minimum } : {}, ...q.schema.maximum !== void 0 ? { maximum: q.schema.maximum } : {}, description: q.description, examples: [q.example] };
     if (r.deep) properties.deep = { type: "boolean", description: "Also read the contract once and report whether the network answers." };
     return {
       name: snake(r.operationId),
@@ -2361,7 +2521,7 @@ function parseArgs(tool, args) {
   if (args === void 0 || args === null) args = {};
   if (typeof args !== "object" || Array.isArray(args)) throw new ApiError(400, "INVALID_ARGUMENT", "arguments must be an object.");
   const a = args;
-  const known = /* @__PURE__ */ new Set([...r.pathParams.map((p) => p.name), ...r.chainRead ? ["consistency"] : [], ...r.deep ? ["deep"] : []]);
+  const known = /* @__PURE__ */ new Set([...r.pathParams.map((p) => p.name), ...r.chainRead ? ["consistency"] : [], ...r.deep ? ["deep"] : [], ...(r.query ?? []).map((q) => q.name)]);
   for (const k of Object.keys(a)) if (!known.has(k)) throw new ApiError(400, "INVALID_ARGUMENT", `Unknown argument "${k}".`, { field: k });
   const params = {};
   for (const p of r.pathParams) {
@@ -2386,6 +2546,14 @@ function parseArgs(tool, args) {
     if (typeof a.deep !== "boolean") throw new ApiError(400, "INVALID_ARGUMENT", "deep must be true or false.", { field: "deep" });
     query.set("deep", String(a.deep));
   }
+  for (const q of r.query ?? []) {
+    const v = a[q.name];
+    if (v === void 0) continue;
+    const t = q.schema.type;
+    if (t === "integer" && typeof v !== "number" || t === "boolean" && typeof v !== "boolean" || t === "string" && typeof v !== "string") throw new ApiError(400, "INVALID_ARGUMENT", `${q.name} must be a ${t === "integer" ? "whole number" : t}.`, { field: q.name });
+    query.set(q.name, String(v));
+  }
+  parseQuery(r, query);
   return { params, query, consistency };
 }
 function createMcpHandler(deps) {
@@ -2487,7 +2655,7 @@ function createApiHandler(deps) {
     }
     return req.socket.remoteAddress ?? "unknown";
   };
-  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now }, params, query);
+  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...deps.waitPollMs ? { pollMs: deps.waitPollMs } : {} }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
   return async (req, res) => {
     const id = randomUUID();
@@ -2561,10 +2729,11 @@ function createApiHandler(deps) {
         throw new ApiError(405, "METHOD_NOT_ALLOWED", "This API is read-only: only GET is supported. Writes are signed by your own wallet with @allocyn/sdk, not sent here.", { headers: { Allow: "GET, HEAD, OPTIONS" } });
       }
       const { route, params } = m;
-      const allowed = /* @__PURE__ */ new Set([...route.chainRead ? ["consistency"] : [], ...route.deep ? ["deep"] : []]);
+      const allowed = /* @__PURE__ */ new Set([...route.chainRead ? ["consistency"] : [], ...route.deep ? ["deep"] : [], ...(route.query ?? []).map((q) => q.name)]);
       for (const k of url.searchParams.keys()) {
         if (!allowed.has(k)) throw new ApiError(400, "INVALID_ARGUMENT", `Unknown query parameter "${k}".`, { field: k });
       }
+      parseQuery(route, url.searchParams);
       let consistency = config.readConsistency;
       if (route.chainRead && url.searchParams.has("consistency")) {
         const c = url.searchParams.get("consistency");
@@ -2599,7 +2768,7 @@ function createApiHandler(deps) {
         }
       }
       const cacheControl = route.cache === "short" ? "public, max-age=60" : finalNow ? "public, max-age=300" : route.chainRead ? "no-cache" : "no-store";
-      const etag = `W/"${createHash3("sha1").update(body).digest("hex").slice(0, 24)}"`;
+      const etag = `W/"${createHash4("sha1").update(body).digest("hex").slice(0, 24)}"`;
       const headers = {
         "Content-Type": route.contentType ?? "application/json; charset=utf-8",
         ...route.contentType ? { "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'" } : {},

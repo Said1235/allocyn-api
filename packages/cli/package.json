@@ -1,0 +1,15 @@
+{
+  "name": "@allocyn/cli",
+  "version": "0.1.0",
+  "description": "Command line for the Allocyn API: read jobs, receipts, proofs and badges from a terminal or a script.",
+  "type": "module",
+  "bin": { "allocyn": "./dist/cli.js" },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.ts"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

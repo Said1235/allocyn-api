@@ -5,7 +5,28 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.1.0), **SDK 0.1.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.2.0), **SDK 0.1.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.2.0 (API) · 0.1.0 (SDK) · 0.1.0 (CLI)
+
+The routes and shapes of 1.0.0 and 1.1.0 did not change. Everything below is added.
+
+**New reads**
+- **`GET /v1/jobs`**: list jobs newest first, filter by `status`, `client` or `worker`, page with `nextCursor` and `before`. The contract has no list view, so the API reads ids one by one (at most 100 per request) and finds the newest id by bisecting; a page can hold fewer than `limit` jobs. Also an MCP tool (`list_jobs`).
+- **`GET /v1/jobs/{jobId}/wait`**: a long poll, instead of webhooks. Returns when the job changes (by its `version`) or when the wait ends. Also an MCP tool (`wait_for_job`).
+- Routes can now declare typed query parameters, validated the same way for REST and MCP.
+
+**Clients**
+- **`@allocyn/cli`**: a read-only command line with no dependencies (`allocyn job job-1`), with documented exit codes.
+- **Python client**: one standard-library file generated from the route table, checked by a test so it cannot fall behind.
+- **SDK packaging**: `npm run stage:sdk` compiles the SDK to plain JavaScript with type declarations and prepares a publishable folder; a test installs it in a clean project, runs it on plain Node and type-checks it. A release workflow publishes on a `sdk-v*` or `cli-v*` tag.
+
+**Not done, on purpose**
+- **Webhooks** need a database of subscriptions and a scheduler, which this API does not have; use `wait`.
+- **Relaying signed transactions** stays out: it would put a write path on a server, and it cannot be verified from the build environment.
+
+**Not verified yet**
+- Nothing here has been published to npm or PyPI, and the release workflow has not run. The new reads were tested on the simulated contract, not on the live Studionet. The package build was checked with TypeScript 6 locally; CI installs TypeScript 5.
 
 ## 1.1.0 (API) · 0.1.0 (SDK)
 

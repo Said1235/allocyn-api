@@ -1,0 +1,35 @@
+name: Release
+
+# Publishes a package to npm when you push a tag: `sdk-v0.1.0` for @allocyn/sdk, `cli-v0.1.0` for @allocyn/cli.
+# Needs an npm automation token saved as the repository secret NPM_TOKEN. Nothing is published without a tag.
+on:
+  push:
+    tags: ["sdk-v*", "cli-v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install
+      - run: npm test
+      - name: Check the tag matches the package version
+        run: |
+          pkg="${GITHUB_REF_NAME%%-v*}"
+          want="${GITHUB_REF_NAME#*-v}"
+          have=$(node -p "require('./packages/$pkg/package.json').version")
+          test "$want" = "$have" || { echo "Tag says $want but packages/$pkg is $have"; exit 1; }
+          echo "PKG=$pkg" >> "$GITHUB_ENV"
+      - run: node scripts/stage-package.mjs "$PKG"
+      - run: npm publish --provenance --access public
+        working-directory: .stage/${{ env.PKG }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

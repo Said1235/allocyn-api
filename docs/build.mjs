@@ -186,7 +186,8 @@ async function referenceHtml(spec) {
       const params = op.parameters.map((p) => ({ ...p }));
       const inputs = params.map((p) => p.in === "path"
         ? `<label>${esc(p.name)}<input data-p="${esc(p.name)}" value="${esc(String(p.example ?? ""))}" size="${p.name === "txHash" ? 30 : 12}" autocomplete="off" spellcheck="false" required></label>`
-        : `<label>${esc(p.name)}<select data-q="${esc(p.name)}"><option value="">(default)</option>${p.schema.enum.map((v) => `<option>${esc(v)}</option>`).join("")}</select></label>`).join("");
+        : p.schema.enum ? `<label>${esc(p.name)}<select data-q="${esc(p.name)}"><option value="">(default)</option>${p.schema.enum.map((v) => `<option>${esc(v)}</option>`).join("")}</select></label>`
+        : `<label>${esc(p.name)}<input data-q="${esc(p.name)}" placeholder="${esc(String(p.example ?? ""))}" size="${p.name === "limit" ? 5 : 14}" autocomplete="off" spellcheck="false"></label>`).join("");
       const curl = `curl -s '${BASE_URL}${e.url}'`;
       html += `<section class="ep" id="${esc(r.operationId)}"><header><span class="m">GET</span><span class="p">${esc(r.path)}</span></header><div class="body">
         <p><strong>${esc(r.summary)}.</strong> ${esc(r.description).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>

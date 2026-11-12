@@ -15,13 +15,18 @@
     "start": "npm start -w @allocyn/api",
     "vercel:build": "npm run docs:build && node scripts/build-vercel.mjs",
     "vercel:check": "node scripts/build-vercel.mjs --check",
-    "test:live": "ALLOCYN_LIVE=1 node --test packages/api/test/live.test.ts"
+    "test:live": "ALLOCYN_LIVE=1 node --test packages/api/test/live.test.ts",
+    "stage:sdk": "node scripts/stage-package.mjs sdk",
+    "stage:cli": "node scripts/stage-package.mjs cli",
+    "python:gen": "node scripts/gen-python-client.mjs"
   },
   "dependencies": {
     "genlayer-js": "^1.1.8"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
   }
 }

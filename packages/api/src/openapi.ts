@@ -52,6 +52,9 @@ export const SCHEMAS: Record<string, S> = {
     integrity: obj({ termsHashMatches: { type: ["boolean", "null"] }, agreementHashMatches: { type: ["boolean", "null"] } }),
     verify: { type: "array", items: str }, notes: { type: "array", items: str },
   }),
+  JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int }),
+  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int, description: "How many job ids were read for this page." } }),
+  JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
     id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str, description: str,
@@ -82,7 +85,7 @@ export const SCHEMAS: Record<string, S> = {
 
 const ERROR_TEXT: Record<number, string> = {
   400: "Invalid parameter.", 404: "Not found.", 429: "Rate limit exceeded. See Retry-After.",
-  502: "The network or contract answered badly or not at all.", 503: "The network did not answer.",
+  502: "The network or contract answered badly or not at all.", 503: "The network did not answer.", 504: "The network took too long to answer.",
 };
 
 export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S {
@@ -90,6 +93,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   for (const r of ROUTES) {
     const parameters: S[] = r.pathParams.map((p) => ({ name: p.name, in: "path", required: true, description: p.description, schema: p.schema, example: p.example }));
     if (r.chainRead) parameters.push({ name: "consistency", in: "query", required: false, description: '"latest" (default) includes non-final state; "final" reads finalized state only (genlayer-js `latest-final`).', schema: { type: "string", enum: ["latest", "final"] } });
+    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: false, description: q.description, schema: { type: q.schema.type, ...(q.schema.enum ? { enum: q.schema.enum } : {}), ...(q.schema.pattern ? { pattern: q.schema.pattern } : {}), ...(q.schema.minimum !== undefined ? { minimum: q.schema.minimum } : {}), ...(q.schema.maximum !== undefined ? { maximum: q.schema.maximum } : {}) }, example: q.example });
     if (r.deep) parameters.push({ name: "deep", in: "query", required: false, description: "`true` also reads the contract once.", schema: { type: "string", enum: ["true", "false"] } });
     const responses: Record<string, S> = {
       "200": {
@@ -106,7 +110,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.1.0",
+      title: "Allocyn API", version: "1.2.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],
