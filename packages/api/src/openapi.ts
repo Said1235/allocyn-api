@@ -34,6 +34,25 @@ export const SCHEMAS: Record<string, S> = {
   }),
   ContractLimits: obj({ minCriteria: int, maxCriteria: int, maxTitleLength: int, maxDescriptionLength: int, maxCriterionLength: int, maxUrlLength: int, maxContentBytes: int, minEvidenceExcerptLength: int, maxEvidenceExcerptLength: int, maxDeliveriesPerJob: int }),
   Criterion: obj({ id: str, text: str }),
+  Proof: obj({
+    jobId: str, status: { type: "string", enum: JOB_STATUS }, final: { type: "boolean" },
+    consistency: { type: "string", enum: ["latest", "final"] }, readAt: { type: "string", format: "date-time" },
+    network: obj({ name: str, chainId: int }), contractUrl: str,
+    facts: obj({
+      contract: obj({ address: addr, chainId: int, sourceSha256: { type: "string", pattern: "^[0-9a-f]{64}$" } }),
+      job: obj({ id: str, title: str, description: str, criteria: { type: "array", items: { $ref: "#/components/schemas/Criterion" } }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, status: { type: "string", enum: JOB_STATUS }, deliveryCount: int, termsHash: hash64n, agreementHash: hash64n }),
+      deliveries: { type: "array", items: obj({
+        deliveryIndex: int, receiptId: str, url: str, status: { type: "string", enum: ["PENDING", "EVALUATED", "SUPERSEDED"] },
+        overallStatus: { oneOf: [{ type: "string", enum: ["VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"] }, { type: "null" }] },
+        evidenceHash: hash64n, evidenceSize: { type: ["integer", "null"] },
+        results: { type: "array", items: obj({ criterionId: str, status: { type: "string", enum: ["MET", "NOT_MET", "UNVERIFIABLE"] }, reasonCode: str }) },
+      }) },
+    }),
+    digest: obj({ algorithm: { type: "string", enum: ["sha256"] }, value: { type: "string", pattern: "^[0-9a-f]{64}$" }, covers: { type: "string", enum: ["facts"] } }),
+    integrity: obj({ termsHashMatches: { type: ["boolean", "null"] }, agreementHashMatches: { type: ["boolean", "null"] } }),
+    verify: { type: "array", items: str }, notes: { type: "array", items: str },
+  }),
+  Badge: { type: "string", description: "An SVG image." },
   Job: obj({
     id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str, description: str,
     criteria: { type: "array", items: ref("Criterion") },
@@ -58,7 +77,7 @@ export const SCHEMAS: Record<string, S> = {
     phase: { type: "string", enum: ["idle", "awaiting_wallet", "submitted", "in_consensus", "decided", "finalized", "cancelled", "timed_out", "undetermined", "rejected_by_user", "failed", "unknown"] },
     label: str, statusName: nstr, decided: { type: "boolean" }, failureMessage: nstr,
   }),
-  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "INTERNAL"] }, message: str, retryable: { type: "boolean" }, field: str }, ["code", "message", "retryable"]) }),
+  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "FORBIDDEN", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "INTERNAL"] }, message: str, retryable: { type: "boolean" }, field: str }, ["code", "message", "retryable"]) }),
 };
 
 const ERROR_TEXT: Record<number, string> = {
@@ -76,17 +95,18 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
       "200": {
         description: "Success.",
         headers: { "X-Request-Id": { schema: str }, "X-RateLimit-Limit": { schema: int }, "X-RateLimit-Remaining": { schema: int } },
-        content: { "application/json": { schema: obj({ success: { type: "boolean", enum: [true] }, data: ref(r.schemaRef) }) } },
+        content: r.contentType ? { [r.contentType]: { schema: ref(r.schemaRef) } } : { "application/json": { schema: obj({ success: { type: "boolean", enum: [true] }, data: ref(r.schemaRef) }) } },
       },
     };
-    for (const e of r.errors) responses[String(e)] = { description: ERROR_TEXT[e] ?? "Error.", content: { "application/json": { schema: ref("ErrorResponse") } } };
-    responses["500"] = { description: "Unexpected server error (no details are exposed).", content: { "application/json": { schema: ref("ErrorResponse") } } };
+    const errContent = r.contentType ? { [r.contentType]: { schema: ref("Badge") } } : { "application/json": { schema: ref("ErrorResponse") } };
+    for (const e of r.errors) responses[String(e)] = { description: ERROR_TEXT[e] ?? "Error.", content: errContent };
+    responses["500"] = { description: "Unexpected server error (no details are exposed).", content: errContent };
     paths[r.path] = { [r.method.toLowerCase()]: { operationId: r.operationId, tags: [r.tag], summary: r.summary, description: r.description, parameters, responses } };
   }
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.0.0",
+      title: "Allocyn API", version: "1.1.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

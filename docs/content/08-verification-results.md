@@ -45,3 +45,19 @@ Per-criterion reason codes are fixed: `MET` ↔ `MEETS_CRITERION`, `NOT_MET` ↔
 - Write criteria that can be checked in the delivered text ("contains the word *refund*"), not matters of taste ("is professional").
 - Check `integrity` on the job: if a hash does not match, do not rely on the data.
 - The page can change after validation. The receipt records what was read at that time.
+
+## Sharing a result: proof and badge
+
+Two reads exist to show a job to someone who does not use the API.
+
+**Proof summary.** `GET /v1/jobs/{jobId}/proof` returns the contract, the terms, the parties, the status and every delivery with its per-criterion verdicts in one document (`facts`), a SHA-256 `digest` of those facts, and the steps to check them against the contract yourself. `final: true` means the job cannot change any more. Quoted evidence excerpts are left out on purpose: they are text from a third-party page, and stay in the receipts.
+
+The digest helps notice that a copy of the proof was altered. It is **not a signature**, and it proves nothing about the contract. The only check that counts is reading the contract.
+
+**Badge.** `GET /v1/jobs/{jobId}/badge.svg` is a small image with the job's status, for a README or a portfolio:
+
+```md
+![Allocyn job](https://your-project.vercel.app/v1/jobs/job-1/badge.svg)
+```
+
+It repeats what the contract says right now, so a badge for a job that is not final can change. An unknown or invalid job still returns a badge ("job not found", "invalid job id") with the matching status code.

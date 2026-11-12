@@ -24,7 +24,7 @@ Being exact about this matters more than sounding impressive.
 - It is **not dispute resolution** and not a legal determination.
 - A `VERIFIED` result means validators judged the delivered text *met the written criteria*. It is **not an objective measure of quality**, and an LLM-assisted verdict is not guaranteed to be the same on every run.
 - It does **not make the validators immune to prompt injection.** The delivered page is untrusted text that an LLM reads. The contract constrains what a verdict can look like, but the SDK and API cannot promise more than the contract does.
-- The API holds **no database and no wallet.** Everything it returns is read from the contract at request time.
+- The API holds **no wallet and stores no jobs.** Everything it returns is read from the contract (or from an answer that can never change again, kept briefly in memory).
 
 ## Where things run
 

@@ -19,6 +19,10 @@
     {
       "source": "/v1/:path*",
       "destination": "/api/index.mjs"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/api/index.mjs"
     }
   ]
 }

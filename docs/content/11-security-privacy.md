@@ -11,7 +11,7 @@ Job titles, descriptions, criteria, addresses, delivery URLs and verdicts are st
 
 ## What the API stores
 
-Nothing. There is no database, cache of contract data, session or account. It keeps request counters in memory for rate limiting, and writes a log line per request (method, path, status, duration, request id). It does not log request bodies, and there are none: it is read-only.
+No jobs, no accounts and no sessions. The only thing it keeps is request counters for rate limiting, in memory by default, or in an optional counter store you configure (see [Limits](limits.html)); a store only receives a hash of the client address and a count. For a short time it also keeps in memory the answers that can never change again, such as an evaluated receipt read with `?consistency=final`, so it does not read them twice. It writes a log line per request (method, path, status, duration, request id). It does not log request bodies, and there are none: it is read-only.
 
 ## Keys
 
@@ -29,7 +29,7 @@ Nothing. There is no database, cache of contract data, session or account. It ke
 
 1. Set `NODE_ENV=production` and list exact `CORS_ORIGINS` (`*` is refused).
 2. Put it behind HTTPS and a reverse proxy; set `TRUST_PROXY=true` only if that proxy is yours.
-3. Add a gateway-level rate limit if you run more than one instance.
+3. If you run more than one instance, configure the shared counter store or add a gateway-level rate limit.
 4. Send the logs somewhere; they carry the `X-Request-Id` returned to clients.
 
 ## Reporting a problem

@@ -10,6 +10,9 @@ import type { ApiConfig } from "../src/config.ts";
 import { buildOpenApi } from "../src/openapi.ts";
 import { ROUTES } from "../src/routes.ts";
 import { validate } from "./schema.ts";
+import { canonicalJson } from "../src/proof.ts";
+import { renderBadge } from "../src/badge.ts";
+import { createHash } from "node:crypto";
 
 const ALICE = "0x" + "a1".repeat(20);
 const BOB = "0x" + "b2".repeat(20);
@@ -46,6 +49,8 @@ after(() => server.close());
 const SAMPLE: Record<string, string> = {
   "/v1/health": "/v1/health", "/v1/meta": "/v1/meta", "/v1/limits": "/v1/limits",
   "/v1/jobs/{jobId}": "/v1/jobs/job-1",
+  "/v1/jobs/{jobId}/proof": "/v1/jobs/job-1/proof",
+  "/v1/jobs/{jobId}/badge.svg": "/v1/jobs/job-1/badge.svg",
   "/v1/jobs/{jobId}/receipts": "/v1/jobs/job-1/receipts",
   "/v1/jobs/{jobId}/receipts/{deliveryIndex}": "/v1/jobs/job-1/receipts/1",
   "/v1/receipts/{receiptId}": "/v1/receipts/rcpt-1",
@@ -62,6 +67,15 @@ test("every route returns the uniform success envelope and matches its OpenAPI s
       await sim.getTx(hash); await sim.getTx(hash); await sim.getTx(hash);
       target = `/v1/transactions/${hash}`;
       sim.connectAs(null);
+    }
+    if (r.contentType) {
+      const res = await fetch(base + target);
+      assert.equal(res.status, 200, r.path);
+      assert.equal(res.headers.get("content-type"), r.contentType);
+      assert.ok(res.headers.get("x-request-id"));
+      assert.ok(spec.paths[r.path].get.responses["200"].content[r.contentType], `${r.path} documents its media type`);
+      assert.match(await res.text(), /^<svg /);
+      continue;
     }
     const { res, json } = await get(target);
     assert.equal(res.status, 200, `${r.path} -> ${res.status} ${JSON.stringify(json)}`);
@@ -283,4 +297,42 @@ test("/v1/limits is a 502 when the address is not an Allocyn contract (no get_li
     assert.equal(res.status, 502);
     assert.equal(((await res.json()) as any).success, false);
   } finally { st.close(); }
+});
+
+test("proof: facts come from the contract, the digest recomputes, excerpts stay out, open jobs are not final", async () => {
+  const { json } = await get("/v1/jobs/job-1/proof");
+  const p = json.data;
+  assert.equal(p.status, "VERIFIED"); assert.equal(p.final, true);
+  assert.equal(p.facts.job.worker, BOB); assert.equal(p.facts.deliveries.length, 1);
+  assert.equal(p.facts.deliveries[0].results.length, 2);
+  assert.equal(p.digest.value, createHash("sha256").update(canonicalJson(p.facts), "utf8").digest("hex"));
+  assert.ok(!JSON.stringify(p).includes("evidenceExcerpt"), "quotes from third-party pages are not part of the proof");
+  assert.match(p.contractUrl, /^https:\/\/.+\/address\/0x[0-9a-fA-F]{40}$/);
+  assert.ok(p.notes.some((n: string) => /not a signature/.test(n)) && p.notes.some((n: string) => /not a payment/.test(n)));
+  // the same facts always hash the same, whatever the key order
+  assert.equal(canonicalJson({ b: 1, a: [2, { d: 1, c: 2 }] }), canonicalJson({ a: [2, { c: 2, d: 1 }], b: 1 }));
+  const open = (await get("/v1/jobs/job-2/proof")).json.data;
+  assert.equal(open.status, "OPEN"); assert.equal(open.final, false); assert.deepEqual(open.facts.deliveries, []);
+  assert.equal((await get("/v1/jobs/job-99/proof")).res.status, 404);
+  assert.equal((await get("/v1/jobs/job-1/proof?consistency=final")).res.status, 200);
+  assert.equal((await get("/v1/jobs/job-1/proof?x=1")).res.status, 400);
+});
+
+test("badge: shows the status, escapes text, and errors are badges with the right status code", async () => {
+  const ok = await fetch(base + "/v1/jobs/job-1/badge.svg");
+  const svg = await ok.text();
+  assert.equal(ok.status, 200); assert.match(ok.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+  assert.match(svg, />verified</); assert.match(svg, /aria-label="allocyn job-1: verified"/);
+  assert.ok(!/<script|href=|javascript:/i.test(svg));
+  assert.match(await (await fetch(base + "/v1/jobs/job-2/badge.svg")).text(), />open</);
+  const missing = await fetch(base + "/v1/jobs/job-99/badge.svg");
+  assert.equal(missing.status, 404); assert.equal(missing.headers.get("content-type"), "image/svg+xml"); assert.match(await missing.text(), /job not found/);
+  const bad = await fetch(base + "/v1/jobs/job-0/badge.svg");
+  assert.equal(bad.status, 400); assert.match(await bad.text(), /invalid job id/);
+  const head = await fetch(base + "/v1/jobs/job-1/badge.svg", { method: "HEAD" });
+  assert.equal(head.status, 200); assert.equal(await head.text(), "");
+  const nasty = renderBadge("a<b", '"x"&y', "ok", "t<i>tle");
+  assert.ok(!nasty.includes("a<b") && !nasty.includes("<i>") && nasty.includes("&quot;x&quot;&amp;y") && nasty.includes("t&lt;i&gt;tle"), "badge text is escaped");
+  assert.match(renderBadge("a<b", "m", "ok", "t"), /a&lt;b/);
+  assert.equal((await fetch(base + "/v1/jobs/job-1/badge.svg", { method: "POST" })).status, 405);
 });

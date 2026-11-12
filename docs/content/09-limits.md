@@ -36,6 +36,6 @@ Lengths are counted in Unicode code points after trimming, as the contract count
 
 ## API rate limits
 
-Per client address, fixed window, in memory: by default **60 requests per 60 seconds** (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`). Over the limit you get `429` with `Retry-After`. The counters live in one process; if you run several instances, also limit at your gateway. Behind a reverse proxy set `TRUST_PROXY=true` so the real client address is used.
+Per client address, fixed window, in memory: by default **60 requests per 60 seconds** (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`). Over the limit you get `429` with `Retry-After`. By default the counters live in one process, so with several instances the real limit is higher. For one shared limit, set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (Upstash Redis, or the `KV_REST_API_URL` and `KV_REST_API_TOKEN` that Vercel's integration adds): every instance then counts in the same store. The store only holds counters under a hashed client address; its token can increment those counters and cannot read jobs or touch the chain. If the store does not answer, the API keeps working with the in-memory limiter. You can also limit at your gateway. Behind a reverse proxy set `TRUST_PROXY=true` so the real client address is used.
 
 A request that waits longer than `REQUEST_TIMEOUT_MS` (25 s) for the network returns `504`.

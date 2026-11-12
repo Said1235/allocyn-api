@@ -17,6 +17,7 @@ test("vercel.json matches the function that exists and routes /v1 to it", () => 
   assert.ok(fs.existsSync(path.join(root, "api/index.mjs")));
   assert.equal(cfg.functions, undefined, "no functions pattern: it is validated before the build");
   assert.ok(cfg.rewrites.some((r: any) => r.source === "/v1/:path*" && r.destination === "/api/index.mjs"));
+  assert.ok(cfg.rewrites.some((r: any) => r.source === "/mcp" && r.destination === "/api/index.mjs"), "the MCP endpoint is routed to the function");
   assert.match(fs.readFileSync(path.join(root, "api/index.mjs"), "utf8"), /export const config = \{ maxDuration: 30 \}/);
   assert.ok(!/gitignore/.test("") && !/^api\/?$/m.test(fs.readFileSync(path.join(root, ".gitignore"), "utf8")), "api/ must not be ignored");
 });

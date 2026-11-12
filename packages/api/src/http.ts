@@ -2,7 +2,7 @@ import { AllocynError } from "@allocyn/sdk";
 
 export type ApiErrorCode =
   | "INVALID_ARGUMENT" | "NOT_FOUND" | "JOB_NOT_FOUND" | "RECEIPT_NOT_FOUND" | "METHOD_NOT_ALLOWED"
-  | "RATE_LIMITED" | "UPSTREAM_UNAVAILABLE" | "UPSTREAM_TIMEOUT" | "DATA_INTEGRITY" | "CONTRACT_NOT_FOUND" | "INTERNAL";
+  | "RATE_LIMITED" | "FORBIDDEN" | "UPSTREAM_UNAVAILABLE" | "UPSTREAM_TIMEOUT" | "DATA_INTEGRITY" | "CONTRACT_NOT_FOUND" | "INTERNAL";
 
 export interface ApiErrorExtra { retryable?: boolean; field?: string; headers?: Record<string, string> }
 

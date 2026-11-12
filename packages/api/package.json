@@ -1,12 +1,13 @@
 {
   "name": "@allocyn/api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only REST API over the Allocyn contract on GenLayer.",
   "type": "module",
   "private": true,
   "engines": { "node": ">=22.6" },
   "scripts": {
     "start": "node --env-file-if-exists=../../.env src/main.ts",
+    "mcp": "node --env-file-if-exists=../../.env src/mcp-stdio.ts",
     "test": "node --test test/*.test.ts"
   },
   "dependencies": { "@allocyn/sdk": "*", "genlayer-js": "^1.1.8" }

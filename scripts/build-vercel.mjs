@@ -44,4 +44,6 @@ fs.mkdirSync(out, { recursive: true });
 fs.cpSync(dist, out, { recursive: true });
 // /openapi.json at the site root, as the standalone server serves it
 fs.copyFileSync(path.join(dist, "openapi.json"), path.join(root, "public/openapi.json"));
+// /llms.txt at the site root for models that read the web
+fs.copyFileSync(path.join(dist, "llms.txt"), path.join(root, "public/llms.txt"));
 console.log("vercel build ready: api/index.mjs + public/");

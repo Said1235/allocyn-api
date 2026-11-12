@@ -11,7 +11,7 @@ const dist = path.join(here, "../dist");
 const content = path.join(here, "../content");
 const read = (f: string) => fs.readFileSync(path.join(dist, f), "utf8");
 const md = (name: string) => fs.readFileSync(path.join(content, name), "utf8");
-const SECTIONS = ["introduction", "quickstart", "core-concepts", "auth-wallets", "rest-reference", "sdk-reference", "lifecycle", "verification-results", "limits", "errors", "security-privacy", "networks", "examples", "faq", "deploy", "changelog"];
+const SECTIONS = ["introduction", "quickstart", "core-concepts", "auth-wallets", "rest-reference", "sdk-reference", "agents-mcp", "lifecycle", "verification-results", "limits", "errors", "security-privacy", "networks", "examples", "faq", "deploy", "changelog"];
 
 test("all required sections (the 15 requested plus Deploying) are built, in the sidebar of every page", () => {
   for (const s of SECTIONS) assert.ok(fs.existsSync(path.join(dist, `${s}.html`)), s);
@@ -135,4 +135,18 @@ test("landing: every internal link resolves and the endpoint table lists every r
     assert.ok(fs.existsSync(path.join(dist, h)), `landing links ${h}`);
   }
   for (const r of ROUTES) assert.ok(html.includes(`GET ${r.path}`), r.path);
+});
+
+test("MCP: the docs page lists every tool, and llms.txt lists every route and tool", async () => {
+  const { buildTools } = await import("../../packages/api/src/mcp.ts");
+  const page = read("agents-mcp.html");
+  const llms = read("llms.txt");
+  for (const t of buildTools()) {
+    assert.ok(page.includes(`<code>${t.name}</code>`), `page lists ${t.name}`);
+    assert.ok(llms.includes(t.name), `llms.txt lists ${t.name}`);
+  }
+  for (const r of ROUTES) assert.ok(llms.includes(r.path), `llms.txt lists ${r.path}`);
+  assert.match(page, /read-only/i);
+  assert.match(page, /not<\/strong> yet been run against an external MCP client|has <strong>not<\/strong> yet been run against an external MCP client/);
+  assert.ok(!/localhost/.test(llms) || process.env.API_BASE_URL === undefined, "llms.txt names the real base URL when one is configured");
 });

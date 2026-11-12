@@ -16,7 +16,7 @@ Base URL: the address of the API you run (default `http://localhost:8787`). The 
 - **Unknown query parameters are rejected** with `400`, so a typo does not silently change what you get.
 - **Headers.** `X-Request-Id` on every response, `X-RateLimit-Limit` and `X-RateLimit-Remaining`, and `Retry-After` on `429`.
 - **CORS.** Browser calls are allowed only from the origins listed in `CORS_ORIGINS`.
-- **Caching.** Contract data is `Cache-Control: no-store`. `/v1/meta` and `/v1/limits` may be cached for 60 s.
+- **Caching.** Reads of contract data carry an `ETag`; send it back in `If-None-Match` and an unchanged answer is a `304` with no body. They are `Cache-Control: no-cache`, so clients revalidate. The exception is an answer that can never change again (a `VERIFIED` job, a job whose deliveries are used up, an evaluated receipt) read with `?consistency=final`: it is `public, max-age=300`, and the server answers it from memory (`X-Allocyn-Cache: hit`) for an hour. Reads with `latest` are never cached for long, because they may include state that is not final. `/v1/meta` and `/v1/limits` may be cached for 60 s, and the badge for 60 s.
 
 ## HTTP status codes
 

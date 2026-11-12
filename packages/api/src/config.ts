@@ -10,6 +10,8 @@ export interface ApiConfig {
   port: number;
   host: string;
   rateLimit: { max: number; windowMs: number };
+  /** Optional shared counter store (Upstash Redis REST) so the limit holds across instances. Counters only. */
+  rateLimitStore: { url: string; token: string } | null;
   trustProxy: boolean;
   readConsistency: "latest" | "final";
   requestTimeoutMs: number;
@@ -29,7 +31,8 @@ const int = (name: string, v: string | undefined, def: number, min: number, max:
 
 /**
  * Reads the environment. Fails fast with a clear message instead of starting half-configured.
- * No variable here is a secret, and none may hold a private key or seed phrase.
+ * No variable may hold a private key or seed phrase. The only credential accepted is the optional token of the
+ * rate-limit counter store, which can increment counters and nothing else.
  */
 export function loadConfig(env: Record<string, string | undefined> = process.env): ApiConfig {
   for (const k of Object.keys(env)) {
@@ -67,10 +70,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const rc = env.READ_CONSISTENCY ?? "latest";
   if (rc !== "latest" && rc !== "final") throw new ConfigError('READ_CONSISTENCY must be "latest" or "final".');
 
+  const storeUrl = (env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL)?.trim() || "";
+  const storeToken = (env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN)?.trim() || "";
+  if (!!storeUrl !== !!storeToken) throw new ConfigError("Set both the rate-limit store URL and token (UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN), or neither.");
+  if (storeUrl) { let u: URL; try { u = new URL(storeUrl); } catch { throw new ConfigError("UPSTASH_REDIS_REST_URL must be an absolute URL."); } if (u.protocol !== "https:") throw new ConfigError("UPSTASH_REDIS_REST_URL must use https."); }
+
   return {
     nodeEnv, network, contractAddress: addr, apiBaseUrl, corsOrigins, port,
     host: env.HOST?.trim() || "0.0.0.0",
     rateLimit: { max: int("RATE_LIMIT_MAX", env.RATE_LIMIT_MAX, 60, 1, 100000), windowMs: int("RATE_LIMIT_WINDOW_MS", env.RATE_LIMIT_WINDOW_MS, 60000, 1000, 3600000) },
+    rateLimitStore: storeUrl ? { url: storeUrl, token: storeToken } : null,
     trustProxy: env.TRUST_PROXY === "true",
     readConsistency: rc,
     requestTimeoutMs: int("REQUEST_TIMEOUT_MS", env.REQUEST_TIMEOUT_MS, 25000, 1000, 120000),

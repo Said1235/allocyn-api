@@ -1,5 +1,7 @@
 import type { AllocynClient } from "@allocyn/sdk";
 import { ApiError } from "./http.ts";
+import { buildProof, isFinalJob } from "./proof.ts";
+import { buildBadge } from "./badge.ts";
 
 /**
  * The route table is the single source of truth: the router, the OpenAPI document and the
@@ -29,6 +31,12 @@ export interface Route {
   deep?: boolean;
   cache: "no-store" | "short";
   schemaRef: string;
+  /** false = not exposed as an MCP tool (e.g. routes that return an image). */
+  mcp?: boolean;
+  /** Set when the route answers with a file instead of the JSON envelope. The handler then returns the file's text. */
+  contentType?: "image/svg+xml";
+  /** Says when an answer can never change again, so a read with ?consistency=final may be cached for a long time. */
+  finalWhen?: (data: any) => boolean;
   /** Statuses besides 200 the route can return (documented in OpenAPI). */
   errors: number[];
   handler: (ctx: Ctx, consistency: "latest" | "final") => Promise<unknown>;
@@ -68,8 +76,20 @@ export const ROUTES: Route[] = [
   {
     method: "GET", path: "/v1/jobs/{jobId}", operationId: "getJob", tag: "Jobs", summary: "Read a job",
     description: "The job's terms, parties, status and receipt ids, read from the contract. `integrity` reports whether the hashes recompute from the returned terms.",
-    pathParams: [jobId], chainRead: true, cache: "no-store", schemaRef: "Job", errors: [400, 404, 429, 502],
+    pathParams: [jobId], chainRead: true, cache: "no-store", schemaRef: "Job", errors: [400, 404, 429, 502], finalWhen: (d) => isFinalJob(d),
     handler: async (ctx, c) => ctx.client(c).getJob(ctx.params.jobId!),
+  },
+  {
+    method: "GET", path: "/v1/jobs/{jobId}/proof", operationId: "getJobProof", tag: "Jobs", summary: "Proof summary of a job",
+    description: "A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. The digest is not a signature. `final: true` means the job cannot change any more.",
+    pathParams: [jobId], chainRead: true, cache: "no-store", schemaRef: "Proof", errors: [400, 404, 429, 502], finalWhen: (d) => d.final === true,
+    handler: async (ctx, c) => buildProof(ctx, c),
+  },
+  {
+    method: "GET", path: "/v1/jobs/{jobId}/badge.svg", operationId: "getJobBadge", tag: "Jobs", summary: "Status badge (SVG)",
+    description: "A small SVG badge with the job's status, for a README or a portfolio: `![job](https://your-api/v1/jobs/job-1/badge.svg)`. It says what the contract says right now and nothing more. A missing or invalid job still answers with a badge, with the matching status code.",
+    pathParams: [jobId], chainRead: true, cache: "short", schemaRef: "Badge", errors: [400, 404, 429, 502], mcp: false, contentType: "image/svg+xml",
+    handler: async (ctx, c) => buildBadge(ctx, c),
   },
   {
     method: "GET", path: "/v1/jobs/{jobId}/receipts", operationId: "listJobReceipts", tag: "Receipts", summary: "List a job's receipts",
@@ -80,7 +100,7 @@ export const ROUTES: Route[] = [
   {
     method: "GET", path: "/v1/jobs/{jobId}/receipts/{deliveryIndex}", operationId: "getJobReceiptByIndex", tag: "Receipts", summary: "Read one receipt by delivery number",
     description: "The receipt of delivery N of a job. A receipt is EVALUATED once validators have judged it; before that `results` is empty.",
-    pathParams: [jobId, deliveryIndex], chainRead: true, cache: "no-store", schemaRef: "Receipt", errors: [400, 404, 429, 502],
+    pathParams: [jobId, deliveryIndex], chainRead: true, cache: "no-store", schemaRef: "Receipt", errors: [400, 404, 429, 502], finalWhen: (d) => d.status !== "PENDING",
     handler: async (ctx, c) => {
       const idx = ctx.params.deliveryIndex!;
       if (!/^[1-9][0-9]{0,5}$/.test(idx)) throw new ApiError(400, "INVALID_ARGUMENT", "deliveryIndex is a whole number starting at 1.", { field: "deliveryIndex" });
@@ -90,7 +110,7 @@ export const ROUTES: Route[] = [
   {
     method: "GET", path: "/v1/receipts/{receiptId}", operationId: "getReceipt", tag: "Receipts", summary: "Read a receipt by id",
     description: "A receipt by its contract id.",
-    pathParams: [receiptId], chainRead: true, cache: "no-store", schemaRef: "Receipt", errors: [400, 404, 429, 502],
+    pathParams: [receiptId], chainRead: true, cache: "no-store", schemaRef: "Receipt", errors: [400, 404, 429, 502], finalWhen: (d) => d.status !== "PENDING",
     handler: async (ctx, c) => ctx.client(c).getReceipt(ctx.params.receiptId!),
   },
   {
@@ -102,7 +122,7 @@ export const ROUTES: Route[] = [
 ];
 
 export interface Matched { route: Route; params: Record<string, string> }
-const compiled = ROUTES.map((r) => ({ route: r, re: new RegExp("^" + r.path.replace(/\{(\w+)\}/g, "(?<$1>[^/]+)") + "$") }));
+const compiled = ROUTES.map((r) => ({ route: r, re: new RegExp("^" + r.path.replace(/\./g, "\\.").replace(/\{(\w+)\}/g, "(?<$1>[^/]+)") + "$") }));
 
 /** Matches a path. Returns the route, or the methods that would have matched another method. */
 export function matchRoute(method: string, pathname: string): Matched | "method" | null {

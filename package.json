@@ -14,7 +14,8 @@
     "docs:build": "node docs/build.mjs",
     "start": "npm start -w @allocyn/api",
     "vercel:build": "npm run docs:build && node scripts/build-vercel.mjs",
-    "vercel:check": "node scripts/build-vercel.mjs --check"
+    "vercel:check": "node scripts/build-vercel.mjs --check",
+    "test:live": "ALLOCYN_LIVE=1 node --test packages/api/test/live.test.ts"
   },
   "dependencies": {
     "genlayer-js": "^1.1.8"

@@ -40,7 +40,7 @@ If `/v1/*` answers `404` from Vercel or the logs show the wrong path, the rewrit
 
 ### What to know on Vercel
 
-- **Rate limiting is per instance.** The built-in counter lives in memory, and serverless instances come and go, so it is not a real limit there. Use Vercel's firewall rate limiting.
+- **Rate limiting is per instance by default.** The built-in counter lives in memory, and serverless instances come and go, so it is not a real limit there. For one shared limit, connect an Upstash Redis (Vercel's Marketplace adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`, which the API reads) or use Vercel's firewall rate limiting. The shared store has been tested here with a stand-in for the Upstash REST API, not with a real Upstash account.
 - **Cold starts.** The first request after idle time loads `genlayer-js` and is slower.
 - **Duration.** The function is configured for up to 30 seconds. Your plan may allow less; the API's own timeout (`REQUEST_TIMEOUT_MS`) should stay below whatever applies.
 - **Docs "Try it".** Set the base URL field to your deployed address if the docs are hosted elsewhere.

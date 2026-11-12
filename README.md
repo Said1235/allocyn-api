@@ -5,7 +5,7 @@ A read-only REST API (`/v1`), a typed TypeScript SDK (`@allocyn/sdk`) and develo
 | Package | What it is |
 |---|---|
 | `packages/sdk` | `@allocyn/sdk`: reads, plus writes signed by the caller's own wallet. Never handles keys. |
-| `packages/api` | Zero-dependency Node HTTP server. Reads the contract; no database, no wallet. Serves `/openapi.json` and the docs under `/docs/`. |
+| `packages/api` | Zero-dependency Node HTTP server. Reads the contract; no wallet, stores no jobs. Serves `/openapi.json` and the docs under `/docs/`. |
 | `docs` | Markdown sources and a static-site builder (15 sections, search, copy buttons, diagrams, live "Try it"). |
 | `scripts` | `sync-core.mjs` (copies the shared, parity-tested core from the web app), `preview-server.mjs` (API + docs on a **simulated** contract). |
 
