@@ -66,20 +66,47 @@ article code{font:0.9em var(--font-mono);background:var(--surface-2);border:1px 
 .copy:hover{background:var(--surface-2);color:var(--ink)}
 .copy[data-done]{color:var(--ok);border-color:var(--ok)}
 .tk-kw{color:var(--c-kw)}.tk-str{color:var(--c-str)}.tk-num{color:var(--c-num)}.tk-com{color:var(--c-com);font-style:italic}.tk-fn{color:var(--c-fn)}.tk-pun{color:var(--c-pun)}.tk-key{color:var(--c-fn)}
-table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14.5px;display:block;overflow-x:auto}
-th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-weight:600;color:var(--ink-2);background:var(--surface);position:sticky;top:0}
+table{border-collapse:separate;border-spacing:0;width:100%;margin:20px 0;font-size:14.5px;display:block;overflow-x:auto;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line-strong);border-right:1px solid var(--line);vertical-align:top}
+th:last-child,td:last-child{border-right:0}
+tbody tr:last-child td{border-bottom:0}
+th{font:600 12.5px var(--font-ui);letter-spacing:.02em;color:var(--ink);background:var(--surface-2);border-bottom:2px solid var(--accent);white-space:nowrap}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface-2) 45%,transparent)}
+tbody tr{transition:background .15s}
+tbody tr:hover td{background:var(--accent-tint)}
 blockquote{margin:20px 0;padding:12px 16px;border:1px solid var(--line-strong);border-left:4px solid var(--accent);border-radius:8px;background:var(--surface)}
 blockquote p{margin:6px 0}
-.diagram{margin:22px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:12px;overflow-x:auto}
-.diagram svg{display:block;min-width:640px;width:100%;height:auto}
-.diagram text{font:500 13px var(--font-ui);fill:var(--ink)}
+.diagram{margin:24px 0;border:1px solid var(--line-strong);border-radius:14px;background:var(--surface);overflow:hidden}
+.diagram figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;padding:11px 16px;border-bottom:1px solid var(--line-strong);background:var(--surface-2);font-size:13px}
+.diagram figcaption b{font-weight:600;color:var(--ink)}
+.diagram .legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--ink-3)}
+.diagram .legend i{font-style:normal;display:inline-flex;align-items:center;gap:6px}
+.diagram .legend i::before{content:"";width:9px;height:9px;border-radius:3px;border:2px solid var(--line-strong)}
+.diagram .legend .ok::before{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 30%,transparent)}
+.diagram .legend .warn::before{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 30%,transparent)}
+.diagram .legend .gold::before{border-color:var(--accent);background:var(--accent-tint)}
+.diagram .legend .bad::before{border-color:var(--err);background:color-mix(in srgb,var(--err) 30%,transparent)}
+.diagram .scroll,.diagram>svg{display:block;min-width:640px;width:100%;height:auto;padding:14px 12px}
+.diagram{overflow-x:auto}
+.diagram text{font:600 13px var(--font-ui);fill:var(--ink)}
 .diagram .sub{font-size:11.5px;fill:var(--ink-3);font-weight:400}
-.diagram .box{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1.4}
-.diagram .ok{stroke:var(--ok)}.diagram .warn{stroke:var(--warn)}.diagram .gold{stroke:var(--accent)}.diagram .bad{stroke:var(--err)}
+.diagram .box{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1.6;transition:filter .2s,stroke-width .2s}
+.diagram .ok{stroke:var(--ok);fill:color-mix(in srgb,var(--ok) 10%,var(--surface-2))}
+.diagram .warn{stroke:var(--warn);fill:color-mix(in srgb,var(--warn) 10%,var(--surface-2))}
+.diagram .gold{stroke:var(--accent);fill:var(--accent-tint)}
+.diagram .bad{stroke:var(--err);fill:color-mix(in srgb,var(--err) 10%,var(--surface-2))}
+.diagram .n:hover .box{stroke-width:2.6}
 .diagram .edge{stroke:var(--ink-3);stroke-width:1.6;fill:none}
-.diagram .edge.dash{stroke-dasharray:5 4}
+.diagram .edge.dash{stroke-dasharray:5 4;animation:dflow 1.4s linear infinite}
 .diagram marker path{fill:var(--ink-3)}
+.diagram .dot{fill:var(--accent);filter:drop-shadow(0 0 4px var(--accent))}
+@keyframes dflow{to{stroke-dashoffset:-18}}
+.js .diagram .n{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease}
+.js .diagram .edge,.js .diagram .dot,.js .diagram text.sub{opacity:0;transition:opacity .6s ease .5s}
+.js .diagram.in .n{opacity:1;transform:none}
+.js .diagram.in .edge,.js .diagram.in .dot,.js .diagram.in text.sub{opacity:1}
+.diagram .n:nth-of-type(2){transition-delay:.08s}.diagram .n:nth-of-type(3){transition-delay:.16s}.diagram .n:nth-of-type(4){transition-delay:.24s}.diagram .n:nth-of-type(5){transition-delay:.32s}.diagram .n:nth-of-type(6){transition-delay:.4s}.diagram .n:nth-of-type(7){transition-delay:.48s}
+@media(prefers-reduced-motion:reduce){.diagram .dot{display:none}.diagram .edge.dash{animation:none}.js .diagram .n,.js .diagram .edge,.js .diagram text.sub{opacity:1;transform:none;transition:none}}
 aside.toc{position:sticky;top:var(--header-h);height:calc(100vh - var(--header-h));overflow:auto;padding:32px 16px;font-size:13.5px}
 aside.toc b{display:block;color:var(--ink-3);font-weight:600;margin-bottom:8px}
 aside.toc a{display:block;padding:3px 0;color:var(--ink-2);text-decoration:none}

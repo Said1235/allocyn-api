@@ -74,8 +74,8 @@ const codeBlock = (code, lang, note) => `<div class="code"><div class="bar"><spa
 
 /* -------------------------------- diagrams -------------------------------- */
 const DEFS = `<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1l8 4-8 4z"/></marker></defs>`;
-const box = (x, y, w, h, label, cls = "", sub = "") => `<rect class="box ${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/><text x="${x + w / 2}" y="${y + h / 2 + (sub ? -2 : 5)}" text-anchor="middle">${label}</text>${sub ? `<text class="sub" x="${x + w / 2}" y="${y + h / 2 + 14}" text-anchor="middle">${sub}</text>` : ""}`;
-const edge = (d, dash) => `<path class="edge${dash ? " dash" : ""}" d="${d}" marker-end="url(#ar)"/>`;
+const box = (x, y, w, h, label, cls = "", sub = "") => `<g class="n"><rect class="box ${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/><text x="${x + w / 2}" y="${y + h / 2 + (sub ? -2 : 5)}" text-anchor="middle">${label}</text>${sub ? `<text class="sub" x="${x + w / 2}" y="${y + h / 2 + 14}" text-anchor="middle">${sub}</text>` : ""}</g>`;
+const edge = (d, dash) => `<path class="edge${dash ? " dash" : ""}" d="${d}" marker-end="url(#ar)"/>${dash ? "" : `<circle class="dot" r="3.4"><animateMotion dur="${(2.4 + (d.length % 7) * 0.25).toFixed(2)}s" begin="${((d.length % 5) * 0.4).toFixed(1)}s" repeatCount="indefinite" path="${d}"/></circle>`}`;
 const lbl = (x, y, t, anchor = "middle") => `<text class="sub" x="${x}" y="${y}" text-anchor="${anchor}">${t}</text>`;
 const DIAGRAMS = {
   job: `<svg viewBox="0 0 760 300" role="img" aria-label="Job status diagram: OPEN, accept, IN_PROGRESS, evaluate, then VERIFIED, NEEDS_REVISION or INCONCLUSIVE; the last two can loop back to IN_PROGRESS by submitting another delivery.">${DEFS}
@@ -98,6 +98,12 @@ const DIAGRAMS = {
     ${edge("M200 45C240 45 240 70 280 72")}${edge("M200 115C240 115 240 90 280 90")}${edge("M200 215H280")}${edge("M450 80C500 80 500 120 540 125")}${edge("M450 215C500 215 500 160 540 155")}
     ${lbl(240, 33, "signs")}${lbl(240, 207, "GET", "middle")}${lbl(495, 100, "reads + writes", "start")}${lbl(495, 205, "reads only", "start")}
   </svg>`,
+};
+
+const DIAGRAM_CAPS = {
+  job: ["Job status", [["gold", "active"], ["ok", "final"], ["warn", "needs revision"], ["bad", "inconclusive"]]],
+  tx: ["Transaction phases", [["gold", "decided"], ["ok", "finalized"], ["bad", "nothing recorded"]]],
+  arch: ["Architecture", [["gold", "signs"], ["ok", "read-only"]]],
 };
 
 /* ----------------------------- markdown -> html ----------------------------- */
@@ -234,7 +240,8 @@ for (const p of pages) {
   let html = md.render(p.body, env);
   html = html.replace(/<div class="diagram" data-diagram="(\w+)"><\/div>/g, (_, n) => {
     if (!DIAGRAMS[n]) throw new Error("unknown diagram " + n);
-    return `<figure class="diagram">${DIAGRAMS[n]}</figure>`;
+    const cap = DIAGRAM_CAPS[n] || ["", []];
+    return `<figure class="diagram"><figcaption><b>${cap[0]}</b><span class="legend">${cap[1].map(([t, l]) => `<i class="${t}">${l}</i>`).join("")}</span></figcaption>${DIAGRAMS[n]}</figure>`;
   });
   html = html.replace(/<div data-mcp-tools><\/div>/, () => {
     const rows = mcpMod.buildTools().map((t) => `<tr><td><code>${esc(t.name)}</code></td><td>${esc(t.route.summary)}</td><td>${t.route.pathParams.length || t.route.chainRead || t.route.deep ? [...t.route.pathParams.map((x) => `<code>${esc(x.name)}</code>`), ...(t.route.chainRead ? ["<code>consistency</code> (optional)"] : []), ...(t.route.deep ? ["<code>deep</code> (optional)"] : [])].join(", ") : "none"}</td><td><code>GET ${esc(t.route.path)}</code></td></tr>`).join("");

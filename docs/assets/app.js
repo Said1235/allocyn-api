@@ -15,6 +15,14 @@
   var side = document.getElementById("side"), mb = document.getElementById("menu");
   if (mb && side) mb.addEventListener("click", function () { var o = side.classList.toggle("open"); mb.setAttribute("aria-expanded", String(o)); });
 
+  // diagrams: reveal when scrolled into view
+  var figs = Array.prototype.slice.call(document.querySelectorAll(".diagram"));
+  if (figs.length) {
+    var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (still || !("IntersectionObserver" in window)) figs.forEach(function (f) { f.classList.add("in"); });
+    else { var dio = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); dio.unobserve(e.target); } }); }, { threshold: 0.2 }); figs.forEach(function (f) { dio.observe(f); }); }
+  }
+
   // copy buttons
   document.querySelectorAll(".copy").forEach(function (b) {
     b.addEventListener("click", function () {
