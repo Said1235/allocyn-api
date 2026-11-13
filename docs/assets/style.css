@@ -1,6 +1,6 @@
 :root{
-  --font-ui:'Instrument Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  --font-display:'Unbounded','Instrument Sans',system-ui,sans-serif;
+  --font-ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-display:'Inter Tight','Inter',system-ui,sans-serif;
   --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --bg:#050707;--surface:#0C1110;--surface-2:#131A18;--ink:#EDEBE4;--ink-2:#B7BBB3;--ink-3:#8E948C;
   --line:#1D2523;--line-strong:#364240;--accent:#FCB21B;--accent-ink:#FCB21B;--accent-tint:#2A2007;--on-accent:#150F00;--focus:#FFD36B;
