@@ -5,17 +5,37 @@ summary: Who signs what. No server wallet, no keys handled by Allocyn.
 ---
 # Authentication and wallets
 
-## Reads need nothing
+<div class="cards two">
+<div class="card">
+
+<span class="badge ok">Reading</span>
+
+### Reads need nothing
 
 The REST API has **no API keys and no login**. It exposes public contract data that anyone can read from the chain. It is rate limited per client address; see [Limits](limits.html).
 
-## Writes are signed by the participant
+</div>
+<div class="card gold">
 
-A write is a blockchain transaction. It has to be signed by the account that is acting: the client creating a job, the worker accepting and delivering, either party asking for an evaluation. Allocyn therefore has this rule:
+<span class="badge gold">Writing</span>
+
+### Writes are signed by the participant
+
+A write is a blockchain transaction, signed by the account that is acting: the client creating a job, the worker accepting and delivering, either party asking for an evaluation.
+
+</div>
+</div>
 
 > **No Allocyn component ever signs on behalf of someone else, and none asks for, stores or logs a private key or seed phrase.**
 
-There are exactly two supported ways to sign with `@allocyn/sdk`:
+## Two ways to sign
+
+There are exactly two supported ways to sign with `@allocyn/sdk`.
+
+<div class="cards">
+<div class="card">
+
+<span class="badge gold">For people</span>
 
 ### Browser wallet (EIP-1193)
 
@@ -27,6 +47,11 @@ const allocyn = await createAllocynClient({ signer: { type: "provider", provider
 ```
 
 Before each write the SDK asks the wallet which chain it is on and throws `WRONG_NETWORK` if it is not Studionet. It does **not** switch networks for you. To add or switch to Studionet use `wallet_addEthereumChain` / `wallet_switchEthereumChain` with the values from `GET /v1/meta` (`chainId` `61999`, hex `0xf22f`).
+
+</div>
+<div class="card">
+
+<span class="badge">For your own service</span>
 
 ### An account your own backend owns
 
@@ -40,9 +65,20 @@ const allocyn = await createAllocynClient({ signer: { type: "account", account }
 
 This is for an identity **you** own. Do not build a service that holds keys for your users and signs for them: that is custody, and Allocyn does not provide or support it. The Allocyn API process itself is always read-only.
 
+</div>
+</div>
+
 ## Relaying signed transactions
 
-A relay would let a user sign in a wallet and have a server broadcast the signed transaction. **This is not implemented.** It is only possible if GenLayerJS supports submitting a pre-signed transaction in the way the contract calls require, and that has not been verified, so no relay endpoint exists. Adding one would be documented separately with its own threat model.
+<div class="cards">
+<div class="card warn">
+
+<span class="badge warn">Not implemented</span>
+
+A relay would let a user sign in a wallet and have a server broadcast the signed transaction. It is only possible if GenLayerJS supports submitting a pre-signed transaction in the way the contract calls require, and that has not been verified, so no relay endpoint exists. Adding one would be documented separately with its own threat model.
+
+</div>
+</div>
 
 ## Who may do what
 

@@ -35,6 +35,7 @@ test("every internal link and anchor resolves", () => {
       if (/^(https?:|\/|#|mailto:)/.test(h) && !h.startsWith("#")) continue;
       if (h.startsWith("#")) { assert.ok(ids.get(s)!.has(h.slice(1)), `${s}: ${h}`); continue; }
       if (/\.(css|png)$/.test(h)) { assert.ok(fs.existsSync(path.join(dist, h)), h); continue; }
+      if (h === "index.html") { assert.ok(fs.existsSync(path.join(dist, h)), "landing page exists"); continue; }
       const [page, anchor] = h.split("#");
       const slug = page!.replace(/\.html$/, "");
       assert.ok(SECTIONS.includes(slug), `${s}: broken link ${h}`);

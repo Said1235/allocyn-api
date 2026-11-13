@@ -112,6 +112,8 @@ md.renderer.rules.fence = (tokens, i) => {
   const t = tokens[i];
   return codeBlock(t.content, (t.info || "").trim().split(/\s+/)[0]);
 };
+md.renderer.rules.table_open = () => '<div class="tbl"><table>\n';
+md.renderer.rules.table_close = () => "</table></div>\n";
 const defaultHeading = md.renderer.rules.heading_open;
 md.renderer.rules.heading_open = (tokens, i, o, env, self) => {
   const t = tokens[i];
@@ -267,7 +269,7 @@ const pageHtml = ({ p, html, env }, i) => {
 <link rel="stylesheet" href="style.css"></head>
 <body><a class="skip" href="#main">Skip to content</a>
 <header class="top"><button class="icon menu-btn" id="menu" aria-expanded="false" aria-controls="side">Menu</button>
-<a class="brand" href="introduction.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><span class="spacer"></span>
+<a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html"><span aria-hidden="true">&larr;</span> Landing page</a><span class="spacer"></span>
 <div class="search"><input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off"><kbd>/</kbd><div id="results" class="results" role="listbox"></div></div>
 <button class="icon" id="theme" type="button"></button></header>
 <div class="layout"><nav class="side" id="side" aria-label="Documentation">${nav}</nav>
