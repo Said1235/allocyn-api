@@ -269,7 +269,7 @@ const pageHtml = ({ p, html, env }, i) => {
 <link rel="stylesheet" href="style.css"></head>
 <body><a class="skip" href="#main">Skip to content</a>
 <header class="top"><button class="icon menu-btn" id="menu" aria-expanded="false" aria-controls="side">Menu</button>
-<a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html"><span aria-hidden="true">&larr;</span> Landing page</a><span class="spacer"></span>
+<a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html" title="Back to the landing page"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 9.2L10 3l7 6.2V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Landing page</a><span class="spacer"></span>
 <div class="search"><input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off"><kbd>/</kbd><div id="results" class="results" role="listbox"></div></div>
 <button class="icon" id="theme" type="button"></button></header>
 <div class="layout"><nav class="side" id="side" aria-label="Documentation">${nav}</nav>
@@ -382,6 +382,7 @@ function flowHtml() {
 }
 
 const BRANDS = path.join(here, "assets/brands");
+const API_VERSION = JSON.parse(fs.readFileSync(path.join(here, "../packages/api/package.json"), "utf8")).version.split(".").slice(0, 2).join(".");
 const brandSvg = (f) => { try { return fs.readFileSync(path.join(BRANDS, f), "utf8").replace(/<\?xml[^>]*>/, "").trim(); } catch { return null; } };
 function techCards(tools, nRoutes) {
   const mcpSvg = (brandSvg("mcp.svg") || "").replace("<svg ", '<svg class="mark mark-mcp" aria-hidden="true" focusable="false" fill="currentColor" ');
@@ -470,7 +471,7 @@ ${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">O
 <button class="icon" id="theme" type="button"></button></header>
 <main id="main">
 <section class="hero"><div class="hero-glow" aria-hidden="true"></div><div class="wrap hero-grid">
-  <div class="hero-copy"><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
+  <div class="hero-copy"><a class="rel" href="changelog.html"><b>v${API_VERSION}</b><span>MCP, proofs, CLI and Python client</span><i aria-hidden="true"></i></a><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
   <p class="lede">Allocyn provides a verifiable infrastructure for work agreements, deliverables and on-chain verification. Integrate through REST APIs, SDKs or AI agents using MCP.</p>
   <div class="cta"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read Documentation</a><a class="btn ghost" href="rest-reference.html">Open the API</a></div>
   <p class="fine">Studionet only. The API is read-only, holds no wallet keys and stores no jobs.</p></div>

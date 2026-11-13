@@ -146,9 +146,10 @@ aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
 /* back to landing */
-.home{display:inline-flex;align-items:center;gap:6px;margin-left:6px;height:30px;padding:0 12px;border:1px solid var(--line-strong);border-radius:999px;color:var(--ink-2);text-decoration:none;font:500 13px var(--font-ui);white-space:nowrap;transition:border-color .2s,color .2s,background .2s}
-.home:hover{border-color:var(--accent);color:var(--ink);background:var(--surface-2)}
-@media(max-width:560px){.home{padding:0 9px}.home{font-size:12.5px}}
+.home{display:inline-flex;align-items:center;gap:8px;margin-left:6px;height:32px;padding:0 14px 0 11px;border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line-strong));border-radius:999px;background:var(--accent-tint);color:var(--ink);text-decoration:none;font:600 13px var(--font-ui);white-space:nowrap;transition:transform .18s,background .2s,box-shadow .2s}
+.home svg{color:var(--accent-ink);flex:none}
+.home:hover{background:color-mix(in srgb,var(--accent) 22%,var(--accent-tint));box-shadow:0 6px 18px -8px color-mix(in srgb,var(--accent) 70%,transparent);transform:translateY(-1px)}
+@media(max-width:560px){.home{padding:0 10px}.home{font-size:12.5px}}
 /* cards in content */
 .cards{display:grid;gap:16px;margin:22px 0}
 @media(min-width:760px){.cards.two{grid-template-columns:repeat(2,minmax(0,1fr))}}
