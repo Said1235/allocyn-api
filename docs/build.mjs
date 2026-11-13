@@ -380,18 +380,14 @@ function techCards(tools, nRoutes) {
   const foxMark = fox ? fox.replace("<svg ", '<svg class="mark mark-fox" aria-hidden="true" focusable="false" ') : `<svg class="mark mark-wallet" viewBox="0 0 48 40" aria-hidden="true" focusable="false"><rect x="3" y="8" width="42" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 8l26-5v5" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="35" cy="23" r="3.2" fill="var(--accent)"/></svg>`;
   const restMark = `<svg class="mark mark-rest" viewBox="0 0 64 40" aria-hidden="true" focusable="false"><path d="M18 8L6 20l12 12M46 8l12 12-12 12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 5L27 35" fill="none" stroke="var(--accent)" stroke-width="3.4" stroke-linecap="round"/></svg>`;
   const cards = [
-    { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts and decentralized verification",
-      text: "The Allocyn contract lives on GenLayer Studionet. It stores each agreement's written criteria, and validators read the delivered page and mark every criterion MET, NOT_MET or UNVERIFIABLE.",
-      state: "Every read in this API goes to that contract through the GenLayer JS SDK.", href: "networks.html", cta: "Network and contract" },
-    { k: "metamask", mark: foxMark, role: "Signs writes", badge: ["part", "Supported by the SDK"], name: "MetaMask", tag: "Web3 wallet connectivity",
-      text: "Writes are signed by the person acting, never by Allocyn. The SDK accepts any EIP-1193 wallet such as MetaMask, checks that it is on the contract's network, and sends one transaction.",
-      state: "The API never sees a wallet or a key. Not yet exercised on the live network from this repository.", href: "auth-wallets.html", cta: "Wallets and signing" },
-    { k: "mcp", mark: mcpSvg, role: "Agent access", badge: ["ok", "Implemented, read-only"], name: "MCP · Model Context Protocol", tag: "AI agent interoperability",
-      text: `A compatible agent connects to <code>/mcp</code> or runs the stdio server, discovers ${tools} tools generated from the same route table as the REST API, and reads jobs, receipts and proofs.`,
-      state: "Not yet run against an external MCP client. No tool can write.", href: "agents-mcp.html", cta: "Connect an agent" },
-    { k: "rest", mark: restMark, role: "App access", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
-      text: `${nRoutes} <code>GET</code> endpoints return jobs, receipts, transaction status, a proof summary and an SVG status badge as JSON, with an OpenAPI 3.1 description and a live try-it.`,
-      state: "No account and no API key. Reads only.", href: "rest-reference.html", cta: "REST reference" },
+    { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts",
+      text: "Validators judge each delivery against the written criteria.", state: "", href: "networks.html", cta: "Network and contract" },
+    { k: "metamask", mark: foxMark, role: "Signs", badge: ["part", "Supported by the SDK"], name: "MetaMask", tag: "Wallet connectivity",
+      text: "Your wallet signs every write. The API never sees a key.", state: "Not tested on the live network yet.", href: "auth-wallets.html", cta: "Wallets and signing" },
+    { k: "mcp", mark: mcpSvg, role: "Agents", badge: ["ok", "Implemented, read-only"], name: "MCP", tag: "AI agent interoperability",
+      text: `Agents read jobs and receipts through ${tools} tools.`, state: "Not tested with an external client yet.", href: "agents-mcp.html", cta: "Connect an agent" },
+    { k: "rest", mark: restMark, role: "Apps", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
+      text: `${nRoutes} read-only endpoints. No account, no key.`, state: "", href: "rest-reference.html", cta: "REST reference" },
   ];
   return cards.map((c, i) => `<article class="tech rv" style="--d:${i * 80}ms" data-k="${c.k}">
   <div class="tech-top"><div class="tech-mark">${c.mark}</div><span class="role">${c.role}</span></div>
