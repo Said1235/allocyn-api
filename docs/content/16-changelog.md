@@ -21,6 +21,7 @@ The routes and shapes of 1.0.0 and 1.1.0 did not change. Everything below is add
 - **Python client**: one standard-library file generated from the route table, checked by a test so it cannot fall behind.
 - **SDK packaging**: `npm run stage:sdk` compiles the SDK to plain JavaScript with type declarations and prepares a publishable folder; a test installs it in a clean project, runs it on plain Node and type-checks it. A release workflow publishes on a `sdk-v*` or `cli-v*` tag.
 
+- An [agent skill](agent-skill.html) in `skills/allocyn/`, generated from the route table (`node scripts/gen-skill.mjs`): it teaches an agent which read to use, how to interpret statuses, what it must not claim, and the safety rules.
 - An independent MCP client check (`npm run test:mcp-client`) using the official MCP Python SDK over stdio and HTTP, run in CI.
 
 **Not done, on purpose**

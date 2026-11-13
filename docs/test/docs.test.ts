@@ -11,7 +11,7 @@ const dist = path.join(here, "../dist");
 const content = path.join(here, "../content");
 const read = (f: string) => fs.readFileSync(path.join(dist, f), "utf8");
 const md = (name: string) => fs.readFileSync(path.join(content, name), "utf8");
-const SECTIONS = ["introduction", "quickstart", "core-concepts", "auth-wallets", "rest-reference", "sdk-reference", "agents-mcp", "cli-python", "lifecycle", "verification-results", "limits", "errors", "security-privacy", "networks", "examples", "faq", "deploy", "changelog"];
+const SECTIONS = ["introduction", "quickstart", "core-concepts", "auth-wallets", "rest-reference", "sdk-reference", "agents-mcp", "agent-skill", "cli-python", "lifecycle", "verification-results", "limits", "errors", "security-privacy", "networks", "examples", "faq", "deploy", "changelog"];
 
 test("all required sections (the 15 requested plus Deploying) are built, in the sidebar of every page", () => {
   for (const s of SECTIONS) assert.ok(fs.existsSync(path.join(dist, `${s}.html`)), s);

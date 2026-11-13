@@ -7,6 +7,8 @@ summary: Let an AI agent read Allocyn jobs and receipts through the Model Contex
 
 The Allocyn API also speaks the **Model Context Protocol** (MCP), so an AI agent can read jobs and receipts as tools, without writing HTTP calls. It is the same data as the REST API: every read route is a tool, built from the same route table, with the same validation and the same errors.
 
+Want the agent to also know how to read the results correctly? Install the [agent skill](agent-skill.html).
+
 **Every tool is read-only.** There is no tool to create, accept, deliver or evaluate a job, and the server holds no key, so it could not sign one. Writes stay with the participant's own wallet and `@allocyn/sdk`.
 
 ## Connect by URL

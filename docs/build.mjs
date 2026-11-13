@@ -321,6 +321,7 @@ POST ${BASE_URL}/mcp speaks the Model Context Protocol (stateless HTTP, JSON). T
 ## Docs
 - ${BASE_URL}/docs/ (human documentation)
 - ${BASE_URL}/openapi.json (OpenAPI 3.1)
+- ${BASE_URL}/agent-skill.html (an installable skill for agents)
 
 ## What it is not
 - Not payments or escrow, not dispute resolution, not a measure of quality.

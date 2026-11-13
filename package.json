@@ -19,6 +19,8 @@
     "test:live": "ALLOCYN_LIVE=1 node --test packages/api/test/live.test.ts",
     "stage:sdk": "node scripts/stage-package.mjs sdk",
     "stage:cli": "node scripts/stage-package.mjs cli",
+    "skill:gen": "node scripts/gen-skill.mjs",
+    "skill:check": "node scripts/gen-skill.mjs --check",
     "python:gen": "node scripts/gen-python-client.mjs"
   },
   "dependencies": {
