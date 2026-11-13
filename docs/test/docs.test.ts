@@ -149,6 +149,7 @@ test("MCP: the docs page lists every tool, and llms.txt lists every route and to
   }
   for (const r of ROUTES) assert.ok(llms.includes(r.path), `llms.txt lists ${r.path}`);
   assert.match(page, /read-only/i);
-  assert.match(page, /not<\/strong> yet been run against an external MCP client|has <strong>not<\/strong> yet been run against an external MCP client/);
+  assert.match(page, /official MCP Python SDK/);
+  assert.match(page, /<strong>not<\/strong> yet been tried in a desktop agent/);
   assert.ok(!/localhost/.test(llms) || process.env.API_BASE_URL === undefined, "llms.txt names the real base URL when one is configured");
 });

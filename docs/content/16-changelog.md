@@ -21,6 +21,8 @@ The routes and shapes of 1.0.0 and 1.1.0 did not change. Everything below is add
 - **Python client**: one standard-library file generated from the route table, checked by a test so it cannot fall behind.
 - **SDK packaging**: `npm run stage:sdk` compiles the SDK to plain JavaScript with type declarations and prepares a publishable folder; a test installs it in a clean project, runs it on plain Node and type-checks it. A release workflow publishes on a `sdk-v*` or `cli-v*` tag.
 
+- An independent MCP client check (`npm run test:mcp-client`) using the official MCP Python SDK over stdio and HTTP, run in CI.
+
 **Not done, on purpose**
 - **Webhooks** need a database of subscriptions and a scheduler, which this API does not have; use `wait`.
 - **Relaying signed transactions** stays out: it would put a write path on a server, and it cannot be verified from the build environment.
@@ -50,7 +52,7 @@ The `/v1` routes and shapes of 1.0.0 did not change. Everything below is added.
 - A live read-only suite for Studionet (`npm run test:live`) and a GitHub Actions workflow that runs the simulated tests on every push and the live suite daily.
 
 **Not verified yet**
-- The MCP server has not been run with an external MCP client, and the live suite has **not been run**: the build environment cannot reach Studionet or install `genlayer-js`. The shared limiter was tested with a stand-in for the Upstash REST API, not a real account. Run `npm run test:live` once yourself, and try the MCP URL with your own client.
+- The MCP server was checked with the official MCP Python SDK against the simulated contract (stdio and HTTP), but not with a desktop agent, and the live suite has **not been run**: the build environment cannot reach Studionet or install `genlayer-js`. The shared limiter was tested with a stand-in for the Upstash REST API, not a real account. Run `npm run test:live` once yourself, and try the MCP URL in your own agent.
 
 ## 1.0.0 (API) · 0.1.0 (SDK)
 

@@ -15,6 +15,7 @@
     "start": "npm start -w @allocyn/api",
     "vercel:build": "npm run docs:build && node scripts/build-vercel.mjs",
     "vercel:check": "node scripts/build-vercel.mjs --check",
+    "test:mcp-client": "python3 -I scripts/mcp-client-check.py",
     "test:live": "ALLOCYN_LIVE=1 node --test packages/api/test/live.test.ts",
     "stage:sdk": "node scripts/stage-package.mjs sdk",
     "stage:cli": "node scripts/stage-package.mjs cli",

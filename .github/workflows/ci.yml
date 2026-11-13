@@ -19,6 +19,10 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
+      - name: MCP server with the official MCP Python SDK (independent client)
+        run: |
+          pip install mcp
+          npm run test:mcp-client
       - name: The committed Vercel function is up to date
         run: npm run vercel:check
 

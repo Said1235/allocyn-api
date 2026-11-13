@@ -52,4 +52,4 @@ Arguments are checked before anything is read. A bad argument or a missing job c
 
 ## Status
 
-The MCP server is covered by automated tests that send real JSON-RPC messages over HTTP and over stdio against the simulated contract. It has **not** yet been run against an external MCP client (Claude, the MCP Inspector) or against the live Studionet from the build environment, so check it with your own client before relying on it.
+The MCP server is covered by automated tests that send real JSON-RPC messages over HTTP and over stdio against the simulated contract. It has also been checked with the **official MCP Python SDK** as an independent client, over both transports (19 checks: initialize, tool list, reads, error handling, ping; run `npm run test:mcp-client`, needs `pip install mcp`). It has **not** yet been tried in a desktop agent (Claude Desktop, Cursor, the MCP Inspector) or against the live Studionet, so check it with your own client before relying on it.

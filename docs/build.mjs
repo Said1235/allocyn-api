@@ -395,7 +395,7 @@ function techCards(tools, nRoutes) {
     { k: "metamask", mark: foxMark, role: "Signs", badge: ["part", "Supported by the SDK"], name: "MetaMask", tag: "Wallet connectivity",
       text: "Your wallet signs every write. The API never sees a key.", state: "Not tested on the live network yet.", href: "auth-wallets.html", cta: "Wallets and signing" },
     { k: "mcp", mark: mcpSvg, role: "Agents", badge: ["ok", "Implemented, read-only"], name: "MCP", tag: "AI agent interoperability",
-      text: `Agents read jobs and receipts through ${tools} tools.`, state: "Not tested with an external client yet.", href: "agents-mcp.html", cta: "Connect an agent" },
+      text: `Agents read jobs and receipts through ${tools} tools.`, state: "Checked with the official Python SDK. Not tested live yet.", href: "agents-mcp.html", cta: "Connect an agent" },
     { k: "rest", mark: restMark, role: "Apps", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
       text: `${nRoutes} read-only endpoints. No account, no key.`, state: "", href: "rest-reference.html", cta: "REST reference" },
   ];
