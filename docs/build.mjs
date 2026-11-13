@@ -347,7 +347,7 @@ const FLOW_STEPS = [
   { tab: "Accept", title: "A worker accepts it", text: "<code>acceptJob</code> records the worker, who cannot be the client. The job is <b>IN_PROGRESS</b>." },
   { tab: "Deliver", title: "The worker delivers a public link", text: "<code>submitDelivery</code> stores the URL and opens a receipt in <b>PENDING</b>. Nothing has been judged yet." },
   { tab: "Judge", title: "Validators judge each criterion", text: "<code>evaluateDelivery</code> makes validators read the page and mark every criterion <b>MET</b>, <b>NOT_MET</b> or <b>UNVERIFIABLE</b>. One NOT_MET makes the job <b>NEEDS_REVISION</b>." },
-  { tab: "Revise", title: "One more delivery is allowed", text: "The result was not final, so the worker sends a corrected link. A job takes at most 2 deliveries; this is the last." },
+  { tab: "Review", title: "One more delivery is allowed", text: "The result was not final, so the worker sends a corrected link. A job takes at most 2 deliveries; this is the last." },
   { tab: "Verified", title: "Every criterion is met", text: "The job is <b>VERIFIED</b> and final: it accepts no more deliveries. Any app or agent can read it with <code>GET /v1/jobs/job-1</code>." },
 ];
 function flowHtml() {
@@ -372,74 +372,141 @@ function flowHtml() {
   <p class="sim">Illustrative walkthrough of one job, not a live one.</p></div>`;
 }
 
+const BRANDS = path.join(here, "assets/brands");
+const brandSvg = (f) => { try { return fs.readFileSync(path.join(BRANDS, f), "utf8").replace(/<\?xml[^>]*>/, "").trim(); } catch { return null; } };
+function techCards(tools, nRoutes) {
+  const mcpSvg = (brandSvg("mcp.svg") || "").replace("<svg ", '<svg class="mark mark-mcp" aria-hidden="true" focusable="false" fill="currentColor" ');
+  const fox = brandSvg("metamask.svg");
+  const foxMark = fox ? fox.replace("<svg ", '<svg class="mark mark-fox" aria-hidden="true" focusable="false" ') : `<svg class="mark mark-wallet" viewBox="0 0 48 40" aria-hidden="true" focusable="false"><rect x="3" y="8" width="42" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 8l26-5v5" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="35" cy="23" r="3.2" fill="var(--accent)"/></svg>`;
+  const restMark = `<svg class="mark mark-rest" viewBox="0 0 64 40" aria-hidden="true" focusable="false"><path d="M18 8L6 20l12 12M46 8l12 12-12 12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 5L27 35" fill="none" stroke="var(--accent)" stroke-width="3.4" stroke-linecap="round"/></svg>`;
+  const cards = [
+    { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts and decentralized verification",
+      text: "The Allocyn contract lives on GenLayer Studionet. It stores each agreement's written criteria, and validators read the delivered page and mark every criterion MET, NOT_MET or UNVERIFIABLE.",
+      state: "Every read in this API goes to that contract through the GenLayer JS SDK.", href: "networks.html", cta: "Network and contract" },
+    { k: "metamask", mark: foxMark, role: "Signs writes", badge: ["part", "Supported by the SDK"], name: "MetaMask", tag: "Web3 wallet connectivity",
+      text: "Writes are signed by the person acting, never by Allocyn. The SDK accepts any EIP-1193 wallet such as MetaMask, checks that it is on the contract's network, and sends one transaction.",
+      state: "The API never sees a wallet or a key. Not yet exercised on the live network from this repository.", href: "auth-wallets.html", cta: "Wallets and signing" },
+    { k: "mcp", mark: mcpSvg, role: "Agent access", badge: ["ok", "Implemented, read-only"], name: "MCP · Model Context Protocol", tag: "AI agent interoperability",
+      text: `A compatible agent connects to <code>/mcp</code> or runs the stdio server, discovers ${tools} tools generated from the same route table as the REST API, and reads jobs, receipts and proofs.`,
+      state: "Not yet run against an external MCP client. No tool can write.", href: "agents-mcp.html", cta: "Connect an agent" },
+    { k: "rest", mark: restMark, role: "App access", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
+      text: `${nRoutes} <code>GET</code> endpoints return jobs, receipts, transaction status, a proof summary and an SVG status badge as JSON, with an OpenAPI 3.1 description and a live try-it.`,
+      state: "No account and no API key. Reads only.", href: "rest-reference.html", cta: "REST reference" },
+  ];
+  return cards.map((c, i) => `<article class="tech rv" style="--d:${i * 80}ms" data-k="${c.k}">
+  <div class="tech-top"><div class="tech-mark">${c.mark}</div><span class="role">${c.role}</span></div>
+  <h3>${c.name}</h3><p class="tag">${c.tag}</p><p>${c.text}</p>
+  <p class="state"><span class="badge ${c.badge[0]}">${c.badge[1]}</span>${c.state}</p>
+  <a class="more" href="${c.href}">${c.cta}<span aria-hidden="true"> &rarr;</span></a></article>`).join("");
+}
+function stepIllustrations() {
+  const s1 = `<svg viewBox="0 0 260 150" aria-hidden="true" focusable="false"><g transform="translate(-28 0)"><rect class="f" x="52" y="12" width="126" height="126" rx="12"/><path class="l" d="M68 36h56"/>
+    <g class="row"><rect class="cb" x="68" y="58" width="14" height="14" rx="4"/><path class="l" d="M90 65h66"/></g>
+    <g class="row r2"><rect class="cb" x="68" y="82" width="14" height="14" rx="4"/><path class="l" d="M90 89h52"/></g>
+    <g class="row r3"><rect class="cb" x="68" y="106" width="14" height="14" rx="4"/><path class="l" d="M90 113h60"/></g>
+    <path class="ck" d="M71 65l3 3 5-6M71 89l3 3 5-6M71 113l3 3 5-6"/></g>
+    <g class="tagx"><rect x="154" y="30" width="96" height="26" rx="13"/><text x="202" y="47" text-anchor="middle">1–20 criteria</text></g></svg>`;
+  const s2 = `<svg viewBox="0 0 260 150" aria-hidden="true" focusable="false"><rect class="f" x="24" y="16" width="212" height="38" rx="12"/><circle class="dt" cx="42" cy="35" r="4"/><text class="mono" x="56" y="39">https://example.org/work</text>
+    <path class="arrow" d="M130 62v34"/><path class="head" d="M121 88l9 10 9-10"/>
+    <g class="rc"><rect class="f" x="62" y="104" width="136" height="36" rx="10"/><text class="mono" x="130" y="127" text-anchor="middle">receipt · PENDING</text></g></svg>`;
+  const s3 = `<svg viewBox="0 0 260 150" aria-hidden="true" focusable="false"><path class="w" d="M130 75L48 34M130 75L212 34M130 75L130 128"/>
+    <g class="val"><circle class="v v1" cx="48" cy="34" r="13"/><circle class="v v2" cx="212" cy="34" r="13"/><circle class="v v3" cx="130" cy="128" r="13"/><path class="vc" d="M42 34l4 4 8-9M206 34l4 4 8-9M124 128l4 4 8-9"/></g>
+    <polygon class="hex" points="130,42 158,58 158,92 130,108 102,92 102,58"/><path class="ck2" d="M117 76l9 9 17-19"/></svg>`;
+  return [s1, s2, s3];
+}
+
 async function landingHtml(links) {
   const ex = (await simulatedExamples());
   const job = ex["/v1/jobs/{jobId}"].body.data;
   const rec = ex["/v1/jobs/{jobId}/receipts"].body.data[0];
   const shown = JSON.stringify({ success: true, data: { id: job.id, status: job.status, worker: job.worker.slice(0, 8) + "…", receiptIds: job.receiptIds, results: rec.results.map((r) => ({ criterionId: r.criterionId, status: r.status })) } }, null, 2);
-  const ticks = (r, n) => Array.from({ length: n }, (_, i) => { const a = (i / n) * Math.PI * 2, r2 = r - (i % 5 === 0 ? 4 : 2); return `<line x1="${(100 + Math.cos(a) * r).toFixed(2)}" y1="${(100 + Math.sin(a) * r).toFixed(2)}" x2="${(100 + Math.cos(a) * r2).toFixed(2)}" y2="${(100 + Math.sin(a) * r2).toFixed(2)}"/>`; }).join("");
-  const rings = `<svg class="rings" viewBox="0 0 200 200" aria-hidden="true" focusable="false"><g class="a"><circle cx="100" cy="100" r="97"/>${ticks(97, 90)}</g><g class="b"><circle cx="100" cy="100" r="82" stroke-dasharray="1 5"/><circle class="dot" cx="182" cy="100" r="2.4"/></g><circle cx="100" cy="100" r="68"/></svg>`;
-  const ext = (label, href, primary) => href ? `<a class="btn${primary ? " primary" : ""}" href="${esc(href)}" rel="noopener">${label}</a>` : "";
-  const endpoints = routes.ROUTES.map((r) => `<tr><td><code>GET ${esc(r.path)}</code></td><td>${esc(r.summary)}</td></tr>`).join("");
-  const run = codeBlock("cd allocyn\nnpm install\ncp .env.example .env\nnpm start", "bash");
-  const read = codeBlock(`curl -s ${BASE_URL}/v1/jobs/job-1`, "bash");
-  const write = codeBlock("const allocyn = await createAllocynClient({\n  signer: { type: \"provider\", provider: window.ethereum, address },\n});\nawait allocyn.createJob({ title, description, criteria });", "ts");
+  const nTools = mcpMod.buildTools().length, nRoutes = routes.ROUTES.length;
+  const ext = (label, href, cls = "") => href ? `<a class="btn${cls ? " " + cls : ""}" href="${esc(href)}" rel="noopener">${label}</a>` : "";
+  const hl = (p) => esc(p).replace(/\{(\w+)\}/g, '<i>{$1}</i>');
+  const groups = [...new Set(routes.ROUTES.map((r) => r.tag))].map((tag) => {
+    const rows = routes.ROUTES.filter((r) => r.tag === tag).map((r) => `<a class="ep-row" href="rest-reference.html#${esc(r.operationId)}" aria-label="${esc(r.method)} ${esc(r.path)}: ${esc(r.summary)}"><span class="m">${esc(r.method)}</span><span class="p">${hl(r.path)}</span><span class="d">${esc(r.summary)}</span><span class="tags">${r.contentType === "image/svg+xml" ? '<b class="t">SVG</b>' : '<b class="t">JSON</b>'}${r.mcp === false ? "" : '<b class="t mcp">MCP</b>'}</span></a>`).join("");
+    return `<div class="ep-group rv"><h3>${esc(tag)}</h3>${rows}</div>`;
+  }).join("");
+  const nots = [
+    ["Not payments or escrow", "No money moves, and a verdict does not release or hold funds."],
+    ["Not dispute resolution", "Not a legal determination of any kind."],
+    ["Not a measure of quality", "Verified means validators judged that the text met the written criteria."],
+    ["Not a relay", "Sending transactions signed elsewhere is not implemented."],
+    ["Not immune to prompt injection", "A delivered page is untrusted text that a model reads."],
+    ["Not a security audit", "It does not replace independent security verification of your own system."],
+    ["Not a custodian", "It holds no keys and no funds, and refuses a private key in its configuration."],
+    ["Not tested live from here", "Tests use a simulated contract. The checks to run yourself are in the docs."],
+  ].map(([t, d], i) => `<li class="rv" style="--d:${(i % 4) * 70}ms"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M6.2 17.8L17.8 6.2"/></svg><b>${t}</b><span>${d}</span></li>`).join("");
+  const ill = stepIllustrations();
+  const how = [["Define the agreement", "A client writes the requirements, the delivery expectations and the acceptance criteria. They are stored in the contract before any work starts."],
+    ["Deliver the work", "The worker submits a public link to the deliverable. The contract opens a receipt that stays PENDING until it is judged."],
+    ["Verify on-chain", "GenLayer Intelligent Contracts have validators read the delivery and judge it against each written criterion."]]
+    .map(([t, d], i) => `<li class="step rv" style="--d:${i * 90}ms"><div class="art">${ill[i]}</div><span class="num">0${i + 1}</span><h3>${t}</h3><p>${d}</p></li>`).join("");
+  const hv = `<div class="hv" id="hv" data-s="4" role="group" aria-label="Illustration of one job: terms written, a worker accepts, work delivered, validators judge, verified. Not a live job.">
+    <div class="hv-card"><div class="hv-top"><span class="hv-id">job-1</span><span class="hv-pill" id="hv-pill">VERIFIED</span></div>
+    <h3 class="hv-title">Landing page copy for a product launch</h3>
+    <ul class="hv-crit" id="hv-crit"><li class="met"><i class="ck"></i><span>Names the product in the first paragraph</span><b class="st"></b></li><li class="met"><i class="ck"></i><span>Includes a pricing section</span><b class="st"></b></li><li class="met"><i class="ck"></i><span>Stays under 400 words</span><b class="st"></b></li></ul>
+    <div class="hv-parties"><div class="hv-party on" id="hv-client"><small>Client</small>writes terms</div><div class="hv-link" id="hv-link"><i></i></div><div class="hv-party on" id="hv-worker"><small>Worker</small>delivers a link</div></div>
+    <div class="hv-deliv" id="hv-deliv"><span class="u">https://example.org/draft</span><b id="hv-rcpt">receipt VERIFIED</b></div>
+    <div class="hv-val" id="hv-val"><span class="vl">Validators</span><i></i><i></i><i></i></div></div>
+    <p class="hv-cap" id="hv-cap">Every criterion is met: the job is final.</p><p class="sim">Illustration of the flow, not a live job.</p></div>`;
   return `<!doctype html>
 <html lang="en" data-theme="dark" data-root="./">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Allocyn API and SDK</title><meta name="description" content="Read Allocyn jobs, receipts and transactions from any app or agent. Writes are signed by your own wallet.">
+<title>Allocyn API and SDK</title><meta name="description" content="Verifiable infrastructure for work agreements, deliverables and on-chain verification. Read it by REST, SDK or MCP agents. Writes are signed by your own wallet.">
 <link rel="icon" href="${LOGO}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Unbounded:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
 <script>document.documentElement.classList.add("js")</script><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"></head>
 <body class="lp"><a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="index.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a>
-<nav class="nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
-${links.appUrl ? `<a class="btn" style="height:36px;padding:0 16px;font-size:14px" href="${esc(links.appUrl)}" rel="noopener">Open the app</a>` : ""}
+<nav class="nav" id="lp-nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
+${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">Open the app</a>` : ""}
+<button class="icon" id="lp-menu" type="button" aria-expanded="false" aria-controls="lp-nav">Menu</button>
 <button class="icon" id="theme" type="button"></button></header>
 <main id="main">
-<section class="hero"><div class="wrap hero-grid">
-  <div><h1>Verified work, readable by any app or agent.</h1>
-  <p class="lede">The Allocyn API reads jobs, receipts and transaction status straight from the contract. The SDK sends writes, signed by your own wallet.</p>
-  <div class="cta"><a class="btn primary" href="quickstart.html">Start with the quickstart</a><a class="btn" href="rest-reference.html">REST reference</a>${ext("Open the app", links.appUrl, false)}${ext("View on GitHub", links.repoUrl, false)}</div>
+<section class="hero"><div class="hero-glow" aria-hidden="true"></div><div class="wrap hero-grid">
+  <div class="hero-copy"><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
+  <p class="lede">Allocyn provides a verifiable infrastructure for work agreements, deliverables and on-chain verification. Integrate through REST APIs, SDKs or AI agents using MCP.</p>
+  <div class="cta"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read Documentation</a><a class="btn ghost" href="rest-reference.html">Open the API</a></div>
   <p class="fine">Studionet only. The API is read-only, holds no wallet keys and stores no jobs.</p></div>
-  <div class="instrument">${rings}${terminalHtml(terminalScenes(ex, shown))}</div>
+  <div class="hero-vis">${hv}</div>
 </div></section>
 
-<section class="block" id="start"><div class="wrap"><h2>Use it in three steps</h2><p class="sub">No account and no API key. Reading needs nothing; writing needs the wallet of whoever is acting.</p>
-<ol class="steps">
-<li><h3>Run the API</h3><p>Node 22.6 or newer. It starts on port 8787 and serves these docs.</p>${run}</li>
-<li><h3>Read a job</h3><p>Any HTTP client works. Every answer is <code>{ success, data }</code> or <code>{ success: false, error }</code>.</p>${read}</li>
-<li><h3>Write with the SDK</h3><p>The person's wallet signs. The SDK sends one transaction and re-reads the contract before reporting success.</p>${write}</li>
-</ol></div></section>
+<section class="stats"><div class="wrap"><dl>
+<div class="rv"><dt>REST endpoints</dt><dd><b data-count="${nRoutes}">${nRoutes}</b></dd></div>
+<div class="rv" style="--d:70ms"><dt>MCP tools for agents</dt><dd><b data-count="${nTools}">${nTools}</b></dd></div>
+<div class="rv" style="--d:140ms"><dt>Written criteria per job</dt><dd><b>1–20</b></dd></div>
+<div class="rv" style="--d:210ms"><dt>Deliveries per job</dt><dd><b>2</b> at most</dd></div>
+</dl></div></section>
 
-<section class="block"><div class="wrap"><h2>Three doors, one rule</h2><p class="sub">Nothing in Allocyn signs on behalf of someone else, and nothing asks for a private key or seed phrase.</p>
-<div class="doors">
-<div class="door"><h3>REST API</h3><p class="who">read-only · no wallet</p><ul><li>Jobs, receipts, transaction status</li><li>Live limits from the contract</li><li>OpenAPI 3.1 and a live try-it</li></ul><a class="btn" href="rest-reference.html">Open the reference</a></div>
-<div class="door"><h3>SDK (<code>@allocyn/sdk</code>)</h3><p class="who">reads + writes · the participant signs</p><ul><li>Create, accept, deliver, evaluate</li><li>Typed errors that keep the transaction hash</li><li>Never resends on its own, never invents an id</li></ul><a class="btn" href="sdk-reference.html">Open the reference</a></div>
-<div class="door"><h3>Agents (MCP)</h3><p class="who">read-only · no wallet</p><ul><li>Every read is a tool for your agent</li><li>Connect by URL or run it locally</li><li>Proof summary and status badge for sharing</li></ul><a class="btn" href="agents-mcp.html">Connect an agent</a></div>
-</div></div></section>
+<section class="block" id="how"><div class="wrap"><div class="head rv"><h2>From agreement to verified work.</h2><p class="sub">Three moves, each one recorded in the contract.</p></div>
+<ol class="steps3">${how}</ol></div></section>
 
-<section class="block"><div class="wrap"><h2>How a job moves</h2><p class="sub">Watch one job from the first line of terms to a verified result. Press a step to jump to it.</p>
+<section class="block tech-sec" id="tech"><div class="wrap"><div class="head rv"><h2>Built with cutting-edge Web3 technology</h2><p class="sub">An interoperable infrastructure designed for developers, decentralized applications and autonomous AI agents. Each piece has one job.</p></div>
+<div class="tech-grid">${techCards(nTools, nRoutes)}</div></div></section>
+
+<section class="block" id="flow"><div class="wrap"><div class="head rv"><h2>How a job moves</h2><p class="sub">Follow one job between the client, the contract, the worker and the validators. Press a step to jump to it.</p></div>
 ${flowHtml()}<noscript><figure class="diagram" style="margin:0">${DIAGRAMS.job}</figure></noscript></div></section>
 
-<section class="block"><div class="wrap"><h2>Endpoints at a glance</h2><p class="sub">All <code>GET</code>. Generated from the same route table the server uses.</p>
-<table><thead><tr><th>Endpoint</th><th>What it returns</th></tr></thead><tbody>${endpoints}</tbody></table></div></section>
+<section class="block" id="try"><div class="wrap split"><div class="head rv"><h2>Read it with one request.</h2><p class="sub">Any HTTP client works, with no account and no key. Every answer is <code>{ success, data }</code> or <code>{ success: false, error }</code>.</p>
+<ul class="ticks"><li>Reads go straight to the contract.</li><li>Final jobs can be cached for minutes.</li><li>A proof summary and a status badge are ready to share.</li></ul>
+<div class="cta"><a class="btn" href="quickstart.html">Quickstart</a><a class="btn ghost" href="sdk-reference.html">SDK reference</a></div></div>
+<div class="term-wrap rv">${terminalHtml(terminalScenes(ex, shown))}</div></div></section>
 
-<section class="block"><div class="wrap"><h2>What it is not</h2><p class="sub">Said plainly, so nobody builds on a wrong idea.</p>
-<ul class="notlist">
-<li><b>Not payments or escrow.</b>No money moves, and a verdict does not release or hold funds.</li>
-<li><b>Not dispute resolution.</b>Not a legal determination of any kind.</li>
-<li><b>Not a measure of quality.</b>A verified job means validators judged the text met the written criteria.</li>
-<li><b>Not immune to prompt injection.</b>A delivered page is untrusted text that a model reads.</li>
-<li><b>Not tested on the live network from here.</b>Tests use a simulated contract; the checks to run yourself are in the docs.</li>
-<li><b>Not a relay.</b>Sending transactions signed elsewhere is not implemented.</li>
-</ul></div></section>
+<section class="block" id="api"><div class="wrap"><div class="head rv"><h2>The API at a glance</h2><p class="sub">All <code>GET</code>, generated from the same route table the server uses. Press an endpoint to open its reference.</p></div>
+<div class="ep-grid">${groups}</div></div></section>
 
-<section class="block closing"><div class="wrap"><h2>Ready to read your first job?</h2><div class="cta"><a class="btn primary" href="quickstart.html">Quickstart</a><a class="btn" href="introduction.html">Read the docs</a><a class="btn" href="/openapi.json">OpenAPI JSON</a>${ext("Open the app", links.appUrl, false)}${ext("View the repository", links.repoUrl, false)}</div></div></section>
+<section class="block" id="not"><div class="wrap"><div class="head rv"><h2>What Allocyn is not</h2><p class="sub">Said plainly, so nobody builds on a wrong idea.</p></div>
+<ul class="nots">${nots}</ul></div></section>
+
+<section class="block closing"><div class="closing-bg" aria-hidden="true"></div><div class="wrap"><h2 class="rv">Ready to build with verified work?</h2><p class="sub rv">Start integrating verifiable work infrastructure into your applications and AI agents.</p>
+<div class="cta rv"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read the Documentation</a><a class="btn ghost" href="rest-reference.html">Explore the API</a>${ext("Open the app", links.appUrl, "ghost")}${ext("View on GitHub", links.repoUrl, "ghost")}</div></div></section>
 </main>
 <footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
 <script src="app.js"></script><script src="landing.js"></script></body></html>`;
 }
+fs.mkdirSync(path.join(OUT, "brands"), { recursive: true });
+for (const f of fs.readdirSync(BRANDS)) if (/\.(png|svg)$/.test(f)) fs.copyFileSync(path.join(BRANDS, f), path.join(OUT, "brands", f));
 fs.copyFileSync(path.join(here, "assets/landing.css"), path.join(OUT, "landing.css"));
 fs.copyFileSync(path.join(here, "assets/landing.js"), path.join(OUT, "landing.js"));
 fs.writeFileSync(path.join(OUT, "index.html"), await landingHtml(loadLinks()));

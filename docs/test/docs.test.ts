@@ -113,7 +113,7 @@ test("landing: app and repo links appear only when configured, and must be https
   try {
     build({});
     let html = read("index.html");
-    assert.match(html, /readable by any app or agent/);
+    assert.match(html, /readable by any app or agent/i);
     const cfg = JSON.parse(fs.readFileSync(path.join(here, "../site.config.json"), "utf8"));
     if (cfg.appUrl) assert.ok(html.includes(`href="${cfg.appUrl}"`) && html.includes("Open the app"), "the configured app is linked");
     else assert.ok(!/Open the app/.test(html), "no app button while appUrl is not configured");

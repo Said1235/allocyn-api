@@ -149,4 +149,75 @@
     play.textContent = playing ? "Pause" : "Play"; play.setAttribute("aria-pressed", String(playing));
     if (playing) onVisible(flow, function () { go(0, true); schedule(); });
   })();
+
+  /* ------------------------------ reveal, counters, menu, parallax ------------------------------ */
+  (function () {
+    var els = Array.prototype.slice.call(document.querySelectorAll(".rv"));
+    if (reduce || !("IntersectionObserver" in window)) els.forEach(function (e) { e.classList.add("in"); });
+    else {
+      var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }); }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+      els.forEach(function (e) { io.observe(e); });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("[data-count]"), function (el) {
+      var to = parseInt(el.getAttribute("data-count"), 10);
+      if (reduce || !isFinite(to)) return;
+      onVisible(el, function () {
+        var t0 = null;
+        (function tick(t) {
+          if (t0 === null) t0 = t;
+          var k = Math.min(1, (t - t0) / 900);
+          el.textContent = String(Math.round(to * (1 - Math.pow(1 - k, 3))));
+          if (k < 1) requestAnimationFrame(tick);
+        })(performance.now());
+      });
+    });
+    var menu = $("lp-menu"), nav = $("lp-nav");
+    if (menu && nav) {
+      menu.addEventListener("click", function () { var o = nav.classList.toggle("open"); menu.setAttribute("aria-expanded", String(o)); });
+      nav.addEventListener("click", function (e) { if (e.target.tagName === "A") { nav.classList.remove("open"); menu.setAttribute("aria-expanded", "false"); } });
+    }
+    var glow = document.querySelector(".hero-glow");
+    if (glow && !reduce) {
+      var tick = false;
+      window.addEventListener("scroll", function () {
+        if (tick || window.scrollY > 900) return; tick = true;
+        requestAnimationFrame(function () { glow.style.transform = "translate3d(0," + (window.scrollY * 0.12).toFixed(1) + "px,0)"; tick = false; });
+      }, { passive: true });
+    }
+  })();
+
+  /* ---------------------------- hero: one job, illustrated ---------------------------- */
+  (function () {
+    var hv = $("hv"); if (!hv) return;
+    var pill = $("hv-pill"), cap = $("hv-cap"), deliv = $("hv-deliv"), rcpt = $("hv-rcpt"), val = $("hv-val"), link = $("hv-link");
+    var client = $("hv-client"), worker = $("hv-worker");
+    var lis = Array.prototype.slice.call($("hv-crit").children);
+    var S = [
+      { pill: "OPEN", cap: "The client writes the terms and the criteria.", c: 1, w: 0, d: 0, r: "", v: "", met: 0 },
+      { pill: "IN_PROGRESS", cap: "A worker accepts the job.", c: 1, w: 1, d: 0, r: "", v: "", met: 0, run: 1 },
+      { pill: "IN_PROGRESS", cap: "The worker delivers a link. The receipt is PENDING.", c: 0, w: 1, d: 1, r: "receipt PENDING", v: "", met: 0, run: 1 },
+      { pill: "IN_PROGRESS", cap: "Validators judge each criterion.", c: 0, w: 0, d: 1, r: "receipt PENDING", v: "work", met: 3, stag: 1 },
+      { pill: "VERIFIED", cap: "Every criterion is met: the job is final.", c: 0, w: 0, d: 1, r: "receipt VERIFIED", v: "done", met: 3, ok: 1 }
+    ];
+    var timers = [], cur = 4, started = false;
+    function clear() { timers.forEach(clearTimeout); timers = []; }
+    function show(n) {
+      clear(); cur = n; var s = S[n];
+      hv.setAttribute("data-s", String(n)); hv.setAttribute("data-tone", s.ok ? "ok" : "");
+      pill.textContent = s.pill; cap.textContent = s.cap; rcpt.textContent = s.r;
+      client.classList.toggle("on", !!s.c); worker.classList.toggle("on", !!s.w);
+      deliv.classList.toggle("on", !!s.d);
+      val.className = "hv-val" + (s.v ? " " + s.v : "");
+      link.classList.remove("go"); if (s.run && !reduce) { void link.offsetWidth; link.classList.add("go"); }
+      lis.forEach(function (li, i) {
+        var on = i < s.met;
+        if (s.stag && !reduce) { li.classList.remove("met"); timers.push(setTimeout(function () { li.classList.add("met"); }, 500 + i * 650)); }
+        else li.classList.toggle("met", on);
+      });
+    }
+    show(4);
+    if (reduce) return;
+    function next() { show((cur + 1) % S.length); timers.push(setTimeout(next, cur === 3 ? 3000 : cur === 4 ? 3600 : 2400)); }
+    onVisible(hv, function () { started = true; show(0); timers.push(setTimeout(next, 2400)); });
+  })();
 })();
