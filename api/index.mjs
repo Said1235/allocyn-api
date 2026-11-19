@@ -3019,6 +3019,17 @@ function createApiHandler(deps) {
 }
 
 // packages/api/src/vercel.ts
+function stripPlatformParams(rawUrl) {
+  const q = rawUrl.indexOf("?");
+  if (q < 0) return rawUrl;
+  const pathname = rawUrl.slice(0, q);
+  const params = new URLSearchParams(rawUrl.slice(q + 1));
+  params.delete("_vercel_share");
+  if (pathname === "/v1" || pathname.startsWith("/v1/")) params.delete("path");
+  else if (pathname.startsWith("/verify/")) params.delete("jobId");
+  const rest = params.toString();
+  return rest ? `${pathname}?${rest}` : pathname;
+}
 var ready = null;
 function init() {
   return (async () => {
@@ -3036,6 +3047,7 @@ async function handler(req, res) {
     ready ??= init();
     const h = await ready;
     if (req.url?.startsWith("/api/")) req.url = req.url.slice(4);
+    if (req.url) req.url = stripPlatformParams(req.url);
     await h(req, res);
   } catch (e) {
     ready = null;
@@ -3047,6 +3059,7 @@ async function handler(req, res) {
   }
 }
 export {
-  handler as default
+  handler as default,
+  stripPlatformParams
 };
 export const config = { maxDuration: 30 };

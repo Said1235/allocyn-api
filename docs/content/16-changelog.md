@@ -11,6 +11,9 @@ Versions: **API v1** (URL prefix `/v1`, release 1.3.0), **SDK 0.2.0**, **docs v1
 
 No route, shape or package version changed. The API still reads straight from the contract, and the API function does not use the database.
 
+**Fixed**
+- **Every `/v1/*` request failed on Vercel** with `Unknown query parameter "path"`. Vercel adds the matched part of the URL to the query string, and the API rejects parameters it does not know. The function now drops that platform parameter (and `jobId` on `/verify`, and the `_vercel_share` link parameter) before routing. The local tests did not go through Vercel's rewrites, so they could not catch it; the first request on the deployed API did.
+
 **Added**
 - **A Postgres database on Supabase** for a copy of public job and receipt data. It has three tables (`jobs`, `receipts` and a private one that remembers where the indexer stopped and which contract it mirrors). Row level security is on everywhere: the public key can only read jobs and receipts, and only the indexer, with a secret key, can write.
 - **An indexer** (`npm run index`, and a scheduled workflow about once an hour). It copies jobs and receipts using final reads only, re-reads the jobs that can still change, skips and reports any row the database refuses, and stops if the database belongs to another contract. The secret key lives only in the repository's secrets. Setup is in [Deploying](deploy.html).
