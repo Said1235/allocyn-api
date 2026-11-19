@@ -139,7 +139,8 @@ aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}
   .menu-btn{display:inline-block}
   nav.side{position:fixed;inset:var(--header-h) 0 0 0;z-index:15;background:var(--bg);display:none;height:auto;border-right:0;padding-bottom:80px}
   nav.side.open{display:block}
-  .search{width:auto;flex:1}
+  .search{width:auto;flex:1;min-width:0}
+  .search input{min-width:0}
   .ver{display:none}
   .brand small{display:none}
 }
@@ -150,6 +151,8 @@ aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}
 .home svg{color:var(--accent-ink);flex:none}
 .home:hover{background:color-mix(in srgb,var(--accent) 22%,var(--accent-tint));box-shadow:0 6px 18px -8px color-mix(in srgb,var(--accent) 70%,transparent);transform:translateY(-1px)}
 @media(max-width:560px){.home{padding:0 10px}.home{font-size:12.5px}}
+/* On a phone the pill keeps only its icon, so the search box and the theme button still fit. */
+@media(max-width:520px){.search kbd{display:none}.home{margin-left:0;padding:0 9px}.home span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 /* cards in content */
 .cards{display:grid;gap:16px;margin:22px 0}
 @media(min-width:760px){.cards.two{grid-template-columns:repeat(2,minmax(0,1fr))}}

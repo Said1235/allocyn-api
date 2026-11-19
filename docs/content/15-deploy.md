@@ -50,15 +50,7 @@ If `/v1/*` answers `404` from Vercel or the logs show the wrong path, the rewrit
 
 ## Optional: a database copy of the jobs
 
-The API reads the contract directly and needs no database. If you want fast lists and counts, an **indexer** can copy the public jobs and receipts into a Postgres database (Supabase). It is separate from the API function: it runs as a scheduled job, and the API function never receives its key.
-
-1. Create a Supabase project and apply the files in `supabase/migrations/` in order. Row level security is on for every table: the public key can read jobs and receipts, and nothing else. Writes need the secret key.
-2. In the repository's **Settings, Secrets and variables, Actions**, add two secrets: `SUPABASE_URL` (the project URL) and `SUPABASE_SECRET_KEY` (a Supabase secret key). They go only there, never in the repository or in the Vercel variables of the API.
-3. The workflow `.github/workflows/index.yml` runs about once an hour and can be started by hand from the Actions tab. Until the secrets exist it does nothing. To run it yourself: `SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run index`.
-
-What it does: reads the contract with a read-only client and **final** reads only, so the copy never holds something the network could still change. It adds new jobs, re-reads the ones that are not `VERIFIED` yet, and writes the receipts of each. It records which contract the database mirrors and refuses to write if that changes. The contract stays the source of truth; the copy can be deleted and rebuilt.
-
-> **Status.** The indexer was tested against a stand-in for the Supabase REST API, which enforces the same table rules, and against the simulated contract. It has **not** been run against a real Supabase project or the live network. The first manual run from the Actions tab is the real test. No API endpoint reads the copy yet.
+The API needs no database. If you want fast lists, counts and your own queries, an indexer can copy the public jobs and receipts into a Supabase Postgres database. It runs as a scheduled job, separate from the API function, and the API function never receives its key. Setup, what it offers and what is and is not done are on [Database copy (Supabase)](database.html).
 
 ## Any Node host
 

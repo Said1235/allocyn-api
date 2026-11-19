@@ -98,12 +98,21 @@ const DIAGRAMS = {
     ${edge("M200 45C240 45 240 70 280 72")}${edge("M200 115C240 115 240 90 280 90")}${edge("M200 215H280")}${edge("M450 80C500 80 500 120 540 125")}${edge("M450 215C500 215 500 160 540 155")}
     ${lbl(240, 33, "signs")}${lbl(240, 207, "GET", "middle")}${lbl(495, 100, "reads + writes", "start")}${lbl(495, 205, "reads only", "start")}
   </svg>`,
+  copy: `<svg viewBox="0 0 760 250" role="img" aria-label="Where the data goes: the indexer reads the Allocyn contract with final reads and writes jobs and receipts into a Supabase Postgres database using a secret key. Anyone with the public key can read the database. The API reads the contract directly today; reading the copy is planned.">${DEFS}
+    ${box(10, 30, 170, 56, "Allocyn contract", "", "GenLayer Studionet")}${edge("M180 58H262")}${lbl(221, 50, "final reads")}
+    ${box(264, 30, 170, 56, "Indexer", "gold", "hourly, read-only")}${edge("M434 58H512")}${lbl(473, 50, "writes")}
+    ${box(514, 30, 236, 56, "Supabase Postgres", "", "row level security on")}
+    ${box(264, 160, 170, 56, "Allocyn API", "ok", "reads the contract today")}${edge("M95 86V188H264")}${lbl(92, 140, "reads", "start")}
+    ${edge("M570 86V122H349V160", true)}${lbl(460, 114, "planned: lists and counts")}
+    ${box(514, 160, 236, 56, "Your SQL or dashboard", "ok", "public key: read only")}${edge("M690 160V86")}${lbl(698, 130, "reads", "start")}
+  </svg>`,
 };
 
 const DIAGRAM_CAPS = {
   job: ["Job status", [["gold", "active"], ["ok", "final"], ["warn", "needs revision"], ["bad", "inconclusive"]]],
   tx: ["Transaction phases", [["gold", "decided"], ["ok", "finalized"], ["bad", "nothing recorded"]]],
   arch: ["Architecture", [["gold", "signs"], ["ok", "read-only"]]],
+  copy: ["The database copy", [["gold", "writes, secret key"], ["ok", "read-only"]]],
 };
 
 /* ----------------------------- markdown -> html ----------------------------- */
@@ -269,7 +278,7 @@ const pageHtml = ({ p, html, env }, i) => {
 <link rel="stylesheet" href="style.css"></head>
 <body><a class="skip" href="#main">Skip to content</a>
 <header class="top"><button class="icon menu-btn" id="menu" aria-expanded="false" aria-controls="side">Menu</button>
-<a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html" title="Back to the landing page"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 9.2L10 3l7 6.2V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Landing page</a><span class="spacer"></span>
+<a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html" title="Back to the landing page"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 9.2L10 3l7 6.2V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>Landing page</span></a><span class="spacer"></span>
 <div class="search"><input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off"><kbd>/</kbd><div id="results" class="results" role="listbox"></div></div>
 <button class="icon" id="theme" type="button"></button></header>
 <div class="layout"><nav class="side" id="side" aria-label="Documentation">${nav}</nav>
@@ -393,7 +402,7 @@ function techCards(tools, nRoutes) {
     { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts",
       text: "Validators judge each delivery against the written criteria.", state: "", href: "networks.html", cta: "Network and contract" },
     { k: "supabase", mark: dbMark, role: "Indexes", badge: ["part", "In progress"], name: "Supabase", tag: "Postgres database",
-      text: "A copy of public job data, for fast lists and stats.", state: "Tables and indexer are written. Not running yet.", href: "changelog.html", cta: "What's new" },
+      text: "A copy of public job data, for fast lists and stats.", state: "Tables and indexer are written. Not running yet.", href: "database.html", cta: "Database copy" },
     { k: "mcp", mark: mcpSvg, role: "Agents", badge: ["ok", "Implemented, read-only"], name: "MCP", tag: "AI agent interoperability",
       text: `Agents read jobs and receipts through ${tools} tools.`, state: "Checked with the official Python SDK. Not tested live yet.", href: "agents-mcp.html", cta: "Connect an agent" },
     { k: "rest", mark: restMark, role: "Apps", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
