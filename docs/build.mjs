@@ -401,8 +401,8 @@ function techCards(tools, nRoutes) {
   const cards = [
     { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts",
       text: "Validators judge each delivery against the written criteria.", state: "", href: "networks.html", cta: "Network and contract" },
-    { k: "supabase", mark: dbMark, role: "Indexes", badge: ["part", "In progress"], name: "Supabase", tag: "Postgres database",
-      text: "A copy of public job data, for fast lists and stats.", state: "Tables and indexer are written. Not running yet.", href: "database.html", cta: "Database copy" },
+    { k: "supabase", mark: dbMark, role: "Indexes", badge: ["ok", "Implemented"], name: "Supabase", tag: "Postgres database",
+      text: "A copy of public job data, filled by an indexer.", state: "The public key can only read.", href: "database.html", cta: "Database copy" },
     { k: "mcp", mark: mcpSvg, role: "Agents", badge: ["ok", "Implemented, read-only"], name: "MCP", tag: "AI agent interoperability",
       text: `Agents read jobs and receipts through ${tools} tools.`, state: "Checked with the official Python SDK. Not tested live yet.", href: "agents-mcp.html", cta: "Connect an agent" },
     { k: "rest", mark: restMark, role: "Apps", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",
