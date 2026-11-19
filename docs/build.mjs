@@ -387,14 +387,13 @@ const API_VERSION = JSON.parse(fs.readFileSync(path.join(here, "../packages/api/
 const brandSvg = (f) => { try { return fs.readFileSync(path.join(BRANDS, f), "utf8").replace(/<\?xml[^>]*>/, "").trim(); } catch { return null; } };
 function techCards(tools, nRoutes) {
   const mcpSvg = (brandSvg("mcp.svg") || "").replace("<svg ", '<svg class="mark mark-mcp" aria-hidden="true" focusable="false" fill="currentColor" ');
-  const fox = brandSvg("metamask.svg");
-  const foxMark = fox ? fox.replace("<svg ", '<svg class="mark mark-fox" aria-hidden="true" focusable="false" ') : `<svg class="mark mark-wallet" viewBox="0 0 48 40" aria-hidden="true" focusable="false"><rect x="3" y="8" width="42" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 8l26-5v5" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="35" cy="23" r="3.2" fill="var(--accent)"/></svg>`;
+  const dbMark = `<svg class="mark mark-db" viewBox="0 0 48 40" aria-hidden="true" focusable="false"><ellipse cx="24" cy="9" rx="16" ry="5.5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 9v22c0 3 7.2 5.5 16 5.5s16-2.5 16-5.5V9" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 20c0 3 7.2 5.5 16 5.5s16-2.5 16-5.5" fill="none" stroke="var(--accent)" stroke-width="3"/></svg>`;
   const restMark = `<svg class="mark mark-rest" viewBox="0 0 64 40" aria-hidden="true" focusable="false"><path d="M18 8L6 20l12 12M46 8l12 12-12 12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M37 5L27 35" fill="none" stroke="var(--accent)" stroke-width="3.4" stroke-linecap="round"/></svg>`;
   const cards = [
     { k: "genlayer", mark: `<img class="mark mark-gl" src="brands/genlayer.png" alt="GenLayer" width="180" height="44">`, role: "Verifies", badge: ["ok", "Implemented"], name: "GenLayer", tag: "Intelligent Contracts",
       text: "Validators judge each delivery against the written criteria.", state: "", href: "networks.html", cta: "Network and contract" },
-    { k: "metamask", mark: foxMark, role: "Signs", badge: ["part", "Supported by the SDK"], name: "MetaMask", tag: "Wallet connectivity",
-      text: "Your wallet signs every write. The API never sees a key.", state: "Not tested on the live network yet.", href: "auth-wallets.html", cta: "Wallets and signing" },
+    { k: "supabase", mark: dbMark, role: "Indexes", badge: ["part", "In progress"], name: "Supabase", tag: "Postgres database",
+      text: "A copy of public job data, for fast lists and stats.", state: "Database ready. The indexer is not running yet.", href: "changelog.html", cta: "What's new" },
     { k: "mcp", mark: mcpSvg, role: "Agents", badge: ["ok", "Implemented, read-only"], name: "MCP", tag: "AI agent interoperability",
       text: `Agents read jobs and receipts through ${tools} tools.`, state: "Checked with the official Python SDK. Not tested live yet.", href: "agents-mcp.html", cta: "Connect an agent" },
     { k: "rest", mark: restMark, role: "Apps", badge: ["ok", "Implemented"], name: "REST API", tag: "Developer-friendly integration",

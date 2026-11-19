@@ -140,8 +140,7 @@ section.block .sub{color:var(--ink-2);max-width:62ch;margin:0;font-size:clamp(16
 [data-theme=light] .mark-gl{filter:invert(1)}
 .mark-mcp{width:42px;height:42px}
 .mark-rest{width:60px;height:38px}
-.mark-wallet{width:50px;height:40px}
-.mark-fox{height:44px;width:auto}
+.mark-db{width:50px;height:40px}
 .wordmark{font:600 19px var(--font-ui);letter-spacing:-.01em}
 .tech .role{flex:none;font:600 12px var(--font-ui);color:var(--ink-2);border:1px solid var(--line-strong);border-radius:999px;padding:3px 10px}
 .tech h3{margin:16px 0 2px;font:600 19px/1.25 var(--font-ui)}

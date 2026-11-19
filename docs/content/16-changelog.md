@@ -7,6 +7,19 @@ summary: What changed in each version of the API, SDK and docs.
 
 Versions: **API v1** (URL prefix `/v1`, release 1.3.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
 
+## Unreleased: database and wallet notes
+
+No route, shape or package version changed. The API still reads straight from the contract.
+
+**Added**
+- **A Postgres database on Supabase** for a copy of public job and receipt data. It has three tables (`jobs`, `receipts` and a private one that remembers where the indexer stopped). Row level security is on everywhere: the public key can only read jobs and receipts, and only the indexer, with a secret key kept in the hosting settings, will be able to write.
+- **MetaMask** is the wallet used in the signing examples and is supported through the SDK's wallet connection. It moved out of the landing's technology cards, which now show the parts that run on the server side. See [Wallets and signing](auth-wallets.html).
+
+**Not done yet**
+- The indexer does not exist yet, so the tables are empty and no endpoint reads them. Lists and counts still come from the contract.
+- Nothing in this entry has run against Studionet. The tables were checked on their own: the public role can read and cannot write.
+- Signing with MetaMask has not been tried on the live network.
+
 ## 1.3.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
 
 The routes and shapes of 1.0.0 to 1.2.0 did not change. Everything below is added.
