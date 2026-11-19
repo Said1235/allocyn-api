@@ -1,6 +1,6 @@
 {
   "name": "@allocyn/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command line for the Allocyn API: read jobs, receipts, proofs and badges from a terminal or a script.",
   "type": "module",
   "bin": { "allocyn": "./dist/cli.js" },

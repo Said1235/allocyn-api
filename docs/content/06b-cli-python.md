@@ -17,7 +17,11 @@ node packages/cli/dist/cli.js job job-1
 node packages/cli/dist/cli.js jobs --status VERIFIED --limit 5
 node packages/cli/dist/cli.js proof job-1
 node packages/cli/dist/cli.js badge job-1 --url
+node packages/cli/dist/cli.js evidence rcpt-1
+node packages/cli/dist/cli.js prepare job-2 --action accept --actor 0xYourAddress
 ```
+
+`evidence` downloads the delivered page on your machine and compares it with the receipt (see [Verification results](verification-results.html)). `prepare` only reads: it shows what a person would sign and sends nothing.
 
 Answers go to standard output as JSON, errors to standard error, so it works in scripts. Exit codes: `0` ok, `1` the API answered with an error, `2` wrong usage, `3` the API could not be reached. The commands are `health`, `meta`, `limits`, `jobs`, `job`, `receipts`, `receipt`, `proof`, `wait`, `badge` and `tx`; `--help` lists the options. There is no default API address, and `http://` is only accepted for `localhost`.
 

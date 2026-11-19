@@ -1,6 +1,6 @@
 {
   "name": "@allocyn/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed client for the Allocyn contract on GenLayer: read jobs and receipts, and send writes signed by the caller's own wallet.",
   "type": "module",
   "main": "./src/index.ts",

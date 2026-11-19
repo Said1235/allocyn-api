@@ -4,6 +4,7 @@ import { buildProof, isFinalJob } from "./proof.ts";
 import { buildBadge } from "./badge.ts";
 import { listJobs, LIST_QUERY } from "./jobs-list.ts";
 import { waitForJob, WAIT_QUERY } from "./wait.ts";
+import { prepareAction, PREPARE_QUERY } from "./prepare.ts";
 import type { QueryParam } from "./params.ts";
 
 /**
@@ -23,6 +24,8 @@ export interface Ctx {
   timeoutMs: number;
   /** How often a waiting handler re-reads the contract, in ms. */
   pollMs: number;
+  /** Where the Allocyn web app lives, for links in prepared actions. Null when not configured. */
+  appUrl: string | null;
 }
 export interface Route {
   method: "GET";
@@ -111,6 +114,12 @@ export const ROUTES: Route[] = [
     description: "Long poll, instead of webhooks. Call it once without `since` to get the job and its `version`; call it again with that `version` as `since` and it answers when the job changes (a worker accepted, a delivery came in, validators judged) or when the wait ends with `changed: false`. Nothing is stored: if you miss an answer, ask again. The wait is capped by `timeout` (at most 25 s) and by the server's request timeout.",
     pathParams: [jobId], query: WAIT_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobWait", errors: [400, 404, 429, 502, 504],
     handler: async (ctx, c) => waitForJob(ctx, c),
+  },
+  {
+    method: "GET", path: "/v1/jobs/{jobId}/prepare", operationId: "prepareAction", tag: "Jobs", summary: "Prepare an action for the person to sign",
+    description: "Checks whether accepting, delivering or evaluating is possible on this job right now, and says exactly what the person would sign: the contract call, the SDK call and a link to the Allocyn app. It only READS the contract: it builds no transaction, holds no key and sends nothing (`sent` is always false). The person signs in their own wallet, and the contract checks everything again at that moment. For an agent: use it to start a flow, never to act on someone's behalf.",
+    pathParams: [jobId], query: PREPARE_QUERY, chainRead: true, cache: "no-store", schemaRef: "PreparedAction", errors: [400, 404, 429, 502],
+    handler: async (ctx, c) => prepareAction(ctx, c),
   },
   {
     method: "GET", path: "/v1/jobs/{jobId}/receipts", operationId: "listJobReceipts", tag: "Receipts", summary: "List a job's receipts",

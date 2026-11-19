@@ -472,7 +472,7 @@ ${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">O
 <button class="icon" id="theme" type="button"></button></header>
 <main id="main">
 <section class="hero"><div class="hero-glow" aria-hidden="true"></div><div class="wrap hero-grid">
-  <div class="hero-copy"><a class="rel" href="changelog.html"><b>v${API_VERSION}</b><span>MCP, proofs, CLI and Python client</span><i aria-hidden="true"></i></a><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
+  <div class="hero-copy"><a class="rel" href="changelog.html"><b>v${API_VERSION}</b><span>Verify pages, evidence checks, guided actions</span><i aria-hidden="true"></i></a><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
   <p class="lede">Allocyn provides a verifiable infrastructure for work agreements, deliverables and on-chain verification. Integrate through REST APIs, SDKs or AI agents using MCP.</p>
   <div class="cta"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read Documentation</a><a class="btn ghost" href="rest-reference.html">Open the API</a></div>
   <p class="fine">Studionet only. The API is read-only, holds no wallet keys and stores no jobs.</p></div>

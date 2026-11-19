@@ -11,6 +11,7 @@ import type { Ctx } from "./routes.ts";
 import { buildOpenApi } from "./openapi.ts";
 import { makeCtx } from "./context.ts";
 import { parseQuery } from "./params.ts";
+import { renderVerifyPage, renderVerifyError, VERIFY_CSP } from "./verify-page.ts";
 import { createMcpHandler } from "./mcp.ts";
 import { errorBadge } from "./badge.ts";
 
@@ -81,7 +82,7 @@ export function createApiHandler(deps: ServerDeps): (req: http.IncomingMessage, 
   };
 
   const ctxFor = (params: Record<string, string>, query: URLSearchParams): Ctx =>
-    makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...(deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}) }, params, query);
+    makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...(deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}), appUrl: config.appUrl }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
 
   return async (req, res) => {
@@ -134,6 +135,27 @@ export function createApiHandler(deps: ServerDeps): (req: http.IncomingMessage, 
         }
         const reply = await mcp.handle(payload);
         return reply ? sendJson(200, reply, rlHeaders()) : send(202, "", rlHeaders());
+      }
+
+      // Shareable human page for one job: GET /verify/job-1. Rate limited like any read, never cached unless final.
+      const verify = /^\/verify\/([^/]+)\/?$/.exec(pathname);
+      if (verify && (method === "GET" || method === "HEAD")) {
+        const htmlHeaders = { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": VERIFY_CSP };
+        try {
+          rl = await limiter.check(clientKey(req));
+          if (!rl.allowed) throw new ApiError(429, "RATE_LIMITED", "Too many requests. Wait a moment and reload.", { retryable: true, headers: { "Retry-After": String(rl.retryAfterSec) } });
+          let timer: NodeJS.Timeout | undefined;
+          const page = await Promise.race([
+            renderVerifyPage(ctxFor({ jobId: verify[1]! }, new URLSearchParams()), config.readConsistency, config.apiBaseUrl || null),
+            new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new ApiError(504, "UPSTREAM_TIMEOUT", "The network took too long to answer.", { retryable: true })), config.requestTimeoutMs); }),
+          ]).finally(() => clearTimeout(timer));
+          return send(200, method === "HEAD" ? "" : page.html, { ...htmlHeaders, ...rlHeaders(), "Cache-Control": page.final ? "public, max-age=300" : "no-cache" });
+        } catch (err) {
+          const e = toApiError(err);
+          const msg = e.status === 404 ? "This job does not exist on the contract." : e.status === 429 ? e.message : e.status >= 500 ? "The network did not answer. Try again in a moment." : "Check the id and try again.";
+          const page = renderVerifyError(e.status, msg);
+          return send(page.status, method === "HEAD" ? "" : page.html, { ...htmlHeaders, ...rlHeaders(), "Cache-Control": "no-store", ...(e.extra.headers ?? {}) });
+        }
       }
 
       // Public, non-API pages (not rate limited like API reads would be, but still GET/HEAD only).

@@ -99,3 +99,43 @@ test("the built bundle runs with plain node, no dependencies, and reports its ve
   assert.equal(JSON.parse(r.stdout).id, "job-1");
   await assert.rejects(exec(process.execPath, [bin, "job", "job-99", "--api", api]), (e: any) => e.code === 1 && /JOB_NOT_FOUND/.test(e.stderr));
 });
+
+test("evidence: the page is downloaded on this machine and compared with the receipt; exit 4 unless unchanged", async () => {
+  const { createHash } = await import("node:crypto");
+  const pageText = "Delivered as SVG. Includes a usage guide.";
+  const hash = createHash("sha256").update(pageText).digest("hex");
+  const prev = sim.evaluator;
+  sim.evaluator = (_u: string, n: number) => ({ statuses: Array(n).fill("MET"), evidenceHash: hash, evidenceSize: Buffer.byteLength(pageText) }) as any;
+  await sim.directWrite(ALICE, "create_job", ["Evidence job", "Used by the evidence test.", ["First check", "Second check"]]);
+  await sim.directWrite(BOB, "accept_job", ["job-3"]);
+  const rid = await sim.directWrite(BOB, "submit_delivery", ["job-3", "https://pages.example.org/evidence"]);
+  await sim.directWrite(BOB, "evaluate_delivery", [String(rid)]);
+  sim.evaluator = prev;
+  const ridText = String(rid);
+  const withPage = (body: string, status = 200) => (async (input: any, init?: any) => {
+    const u = String(input);
+    if (u.startsWith(api)) return fetch(input, init);
+    const r = new Response(body, { status }); Object.defineProperty(r, "url", { value: u }); return r;
+  }) as typeof fetch;
+  const go = async (f: typeof fetch) => { const out: string[] = []; const code = await run(["evidence", ridText, "--api", api], { fetch: f, out: (s) => out.push(s), err: () => {}, env: {} }); return { code, body: JSON.parse(out.join("\n")) }; };
+  const same = await go(withPage(pageText));
+  assert.equal(same.code, 0); assert.equal(same.body.status, "unchanged");
+  const changed = await go(withPage(pageText + " edited"));
+  assert.equal(changed.code, 4); assert.equal(changed.body.status, "changed");
+  const gone = await go(withPage("nope", 404));
+  assert.equal(gone.code, 4); assert.equal(gone.body.status, "unreachable");
+  const bad = await cli(["evidence", "rcpt-99", "--api", api]);
+  assert.equal(bad.code, 1);
+});
+
+test("prepare shows what the person would sign and sends nothing", async () => {
+  const r = await cli(["prepare", "job-2", "--action", "accept", "--api", api]);
+  assert.equal(r.code, 0);
+  const d = JSON.parse(r.out);
+  assert.equal(d.canProceed, true); assert.equal(d.sent, false);
+  assert.deepEqual(d.intent, { contractMethod: "accept_job", args: ["job-2"] });
+  const bad = await cli(["prepare", "job-2", "--api", api]);
+  assert.equal(bad.code, 1); assert.match(bad.err, /field: action/);
+  const sub = await cli(["prepare", "job-2", "--action", "submit", "--delivery-url", "https://example.org/x", "--api", api]);
+  assert.equal(sub.code, 0); assert.equal(JSON.parse(sub.out).canProceed, false);
+});

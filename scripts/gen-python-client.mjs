@@ -47,7 +47,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 class AllocynApiError(Exception):

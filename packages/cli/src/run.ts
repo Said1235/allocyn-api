@@ -1,8 +1,11 @@
 /**
  * The Allocyn command line. It talks to a deployed Allocyn API over HTTP: it has no dependencies, no wallet and
- * cannot write. Exit codes: 0 ok, 1 the API answered with an error, 2 wrong usage, 3 could not reach the API.
+ * cannot write. Exit codes: 0 ok, 1 the API answered with an error, 2 wrong usage, 3 could not reach the API,
+ * 4 (evidence only) the page changed or could not be compared.
  */
-export const CLI_VERSION = "0.1.0";
+import { checkEvidence } from "../../sdk/src/evidence.ts";
+
+export const CLI_VERSION = "0.2.0";
 
 export interface Io {
   fetch: typeof fetch;
@@ -28,6 +31,10 @@ Commands:
   wait <job-id> [--since V] [--timeout S]   Wait until the job changes
   badge <job-id> [--url]             Print the badge SVG, or its URL with --url
   tx <0x-hash>                       Where a transaction is in consensus
+  prepare <job-id> --action accept|submit|evaluate [--delivery-url U] [--actor ADDR]
+                                     Check an action and show what the person would sign (sends nothing)
+  evidence <rcpt-id>                 Has the delivered page changed since it was judged?
+                                     (downloads the page on this machine; exit 4 unless unchanged)
 
 Options:
   --api <url>            Base URL of the API (or set ALLOCYN_API_URL)
@@ -42,7 +49,7 @@ class Usage extends Error {}
 
 function parse(argv: string[]) {
   const flags: Record<string, string | true> = {}; const pos: string[] = [];
-  const withValue = new Set(["api", "consistency", "status", "client", "worker", "limit", "before", "since", "timeout"]);
+  const withValue = new Set(["api", "consistency", "status", "client", "worker", "limit", "before", "since", "timeout", "action", "delivery-url", "actor"]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "-h") flags.help = true;
@@ -88,6 +95,8 @@ export async function run(argv: string[], io: Io): Promise<number> {
       case "wait": path = `/v1/jobs/${one(pos, "job-id")}/wait`; add("since", "timeout", "consistency"); break;
       case "badge": path = `/v1/jobs/${one(pos, "job-id")}/badge.svg`; add("consistency"); svg = true; break;
       case "tx": path = `/v1/transactions/${one(pos, "0x-hash")}`; break;
+      case "prepare": path = `/v1/jobs/${one(pos, "job-id")}/prepare`; add("action", "actor", "consistency"); if (flags["delivery-url"] !== undefined) q.set("deliveryUrl", String(flags["delivery-url"])); break;
+      case "evidence": path = `/v1/receipts/${one(pos, "rcpt-id")}`; break;
       default: throw new Usage(`Unknown command "${cmd}". Try --help.`);
     }
     if (flags.consistency && !["latest", "final"].includes(String(flags.consistency))) throw new Usage('--consistency must be "latest" or "final".');
@@ -106,6 +115,11 @@ export async function run(argv: string[], io: Io): Promise<number> {
       io.err(`error ${e.code ?? res.status}: ${e.message ?? "the API reported an error"}${e.field ? ` (field: ${e.field})` : ""}${e.retryable ? " [retryable]" : ""}`);
       if (flags.envelope) io.out(JSON.stringify(body, null, 2));
       return 1;
+    }
+    if (cmd === "evidence") {
+      const check = await checkEvidence(body.data, { fetch: io.fetch });
+      io.out(JSON.stringify(check, null, 2));
+      return check.status === "unchanged" ? 0 : 4;
     }
     io.out(JSON.stringify(flags.envelope ? body : body.data, null, 2));
     return 0;

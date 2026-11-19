@@ -7,7 +7,7 @@ description: Read Allocyn work agreements, delivery receipts and transaction sta
 
 Allocyn is a contract on GenLayer Studionet. A client writes a job with 1 to 20 written criteria, a worker delivers a public link, and validators read that page and judge each criterion. The Allocyn API exposes that data **read-only**. This skill is about reading it correctly.
 
-Generated from API 1.2.0. Full endpoint list: [references/api.md](references/api.md).
+Generated from API 1.3.0. Full endpoint list: [references/api.md](references/api.md).
 
 ## Pick how to read
 
@@ -24,6 +24,8 @@ The base URL belongs to the user's deployment. If you do not know it, ask. Local
 - **Find jobs:** `list_jobs` with `status`, `client` or `worker` filters. It reads ids one by one, so keep `limit` small and pass the returned `nextCursor` as `before` only when you need older jobs.
 - **Wait for a change:** `wait_for_job`. Call it once without `since`, then again with the `version` you got. It answers when the job changes or after at most 25 seconds. Do this instead of polling in a loop.
 - **Track a transaction:** `get_transaction` with the hash the user gives you. A decided transaction is not proof: re-read the job afterwards.
+- **Has the delivered page changed since it was judged?** Use the CLI (`allocyn evidence <rcpt-id>`) or `checkEvidence` in `@allocyn/sdk`: they download the page on the user's machine and compare its SHA-256 with the receipt's `evidenceHash`. The API never fetches third-party pages. A change can be harmless, and an unchanged page says nothing about whether the verdict was right.
+- **Something to show a person:** `/verify/{jobId}` on the API is a human-readable page for one job. Share that link instead of pasting raw JSON.
 - **Read final data:** add `consistency=final` to read only finalized state. Use it when you will quote the result.
 
 ## Reading the result
@@ -37,6 +39,15 @@ The base URL belongs to the user's deployment. If you do not know it, ask. Local
 | `INCONCLUSIVE` | At least one criterion UNVERIFIABLE: the page lacked evidence. Same rule as above. |
 
 A job takes at most 2 deliveries. It is final when VERIFIED, or when NEEDS_REVISION or INCONCLUSIVE with both deliveries used. Receipts go PENDING, then EVALUATED. A second delivery makes an unjudged first one SUPERSEDED.
+
+## Helping someone act
+
+Accepting, delivering and evaluating are writes, and you never perform them. `prepare_action` (`GET /v1/jobs/{jobId}/prepare?action=accept, submit or evaluate`) only reads the contract: it says whether the action is possible now, who may sign, what they would sign, and a link to the Allocyn app. Use it when the person asks to start one of those actions.
+
+- Ask for `actor` (their address) when you know it, so the answer says whether *they* may do it. For `submit`, pass the `deliveryUrl` they gave you.
+- If `canProceed` is false, explain the `reasons` and stop. Do not suggest a workaround.
+- If it is true, give them `appLink` or the `sdk` call and tell them they confirm it in their own wallet. `sent` is always false: **never say it was done, started or submitted.**
+- The answer can be out of date by the time they sign; the contract checks again.
 
 ## What you may and may not say
 
@@ -63,6 +74,7 @@ A job takes at most 2 deliveries. It is final when VERIFIED, or when NEEDS_REVIS
 | `get_job` | Read a job (`GET /v1/jobs/{jobId}`) |
 | `get_job_proof` | Proof summary of a job (`GET /v1/jobs/{jobId}/proof`) |
 | `wait_for_job` | Wait for a job to change (`GET /v1/jobs/{jobId}/wait`) |
+| `prepare_action` | Prepare an action for the person to sign (`GET /v1/jobs/{jobId}/prepare`) |
 | `list_job_receipts` | List a job's receipts (`GET /v1/jobs/{jobId}/receipts`) |
 | `get_job_receipt_by_index` | Read one receipt by delivery number (`GET /v1/jobs/{jobId}/receipts/{deliveryIndex}`) |
 | `get_receipt` | Read a receipt by id (`GET /v1/receipts/{receiptId}`) |

@@ -9,3 +9,5 @@ export type { JobDto, ReceiptDto, CriterionDto, CriterionResultDto } from "./dto
 export type { JobStatus, ReceiptStatus, CriterionResultStatus, Outcome, TxPhase, TxProgress, ReadConsistency } from "./types.ts";
 export { PHASE_LABEL } from "./core/contract/tx.ts";
 export { createChainGuard } from "./chain.ts";
+export { checkEvidence, EVIDENCE_MAX_BYTES } from "./evidence.ts";
+export type { EvidenceCheck, EvidenceVerdict, EvidenceReceipt, EvidenceOptions } from "./evidence.ts";

@@ -21,6 +21,7 @@ Vercel looks for serverless functions **before** it runs the build, so `api/inde
 |---|---|
 | `NODE_ENV` | `production` |
 | `API_BASE_URL` | your public URL, e.g. `https://your-project.vercel.app` |
+| `APP_URL` | optional: where the Allocyn web app lives (https). Only used to build the app links in `prepare_action` answers |
 | `CORS_ORIGINS` | the exact origins that may call the API from a browser, comma separated (`*` is refused in production) |
 | `TRUST_PROXY` | `true` |
 | `REQUEST_TIMEOUT_MS` | `8000` (keep it under the function's duration limit) |

@@ -54,6 +54,17 @@ export const SCHEMAS: Record<string, S> = {
   }),
   JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int }),
   JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int, description: "How many job ids were read for this page." } }),
+  PreparedAction: obj({
+    jobId: { type: "string" }, action: { type: "string", enum: ["accept", "submit", "evaluate"] }, status: { type: "string" }, final: { type: "boolean" },
+    canProceed: { type: "boolean", description: "True when the contract would accept this action from the right account right now." },
+    reasons: { type: "array", items: { type: "string" }, description: "Why not, when canProceed is false." },
+    whoMaySign: { type: "string" }, actor: { type: "string" },
+    intent: { type: ["object", "null"], description: "The contract call the person would sign. Null when canProceed is false." },
+    sdk: { type: ["string", "null"], description: "The same call with @allocyn/sdk." },
+    appLink: { type: ["string", "null"], description: "A link to the Allocyn app, when APP_URL is configured." },
+    sent: { type: "boolean", description: "Always false: nothing is sent or signed here." },
+    readAt: { type: "string", format: "date-time" }, next: { type: "string" }, notes: { type: "array", items: { type: "string" } },
+   }, ["jobId", "action", "status", "final", "canProceed", "reasons", "whoMaySign", "intent", "sdk", "appLink", "sent", "readAt", "next", "notes"]),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -93,7 +104,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   for (const r of ROUTES) {
     const parameters: S[] = r.pathParams.map((p) => ({ name: p.name, in: "path", required: true, description: p.description, schema: p.schema, example: p.example }));
     if (r.chainRead) parameters.push({ name: "consistency", in: "query", required: false, description: '"latest" (default) includes non-final state; "final" reads finalized state only (genlayer-js `latest-final`).', schema: { type: "string", enum: ["latest", "final"] } });
-    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: false, description: q.description, schema: { type: q.schema.type, ...(q.schema.enum ? { enum: q.schema.enum } : {}), ...(q.schema.pattern ? { pattern: q.schema.pattern } : {}), ...(q.schema.minimum !== undefined ? { minimum: q.schema.minimum } : {}), ...(q.schema.maximum !== undefined ? { maximum: q.schema.maximum } : {}) }, example: q.example });
+    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: !!q.required, description: q.description, schema: { type: q.schema.type, ...(q.schema.enum ? { enum: q.schema.enum } : {}), ...(q.schema.pattern ? { pattern: q.schema.pattern } : {}), ...(q.schema.minimum !== undefined ? { minimum: q.schema.minimum } : {}), ...(q.schema.maximum !== undefined ? { maximum: q.schema.maximum } : {}) }, example: q.example });
     if (r.deep) parameters.push({ name: "deep", in: "query", required: false, description: "`true` also reads the contract once.", schema: { type: "string", enum: ["true", "false"] } });
     const responses: Record<string, S> = {
       "200": {
@@ -110,7 +121,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.2.0",
+      title: "Allocyn API", version: "1.3.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

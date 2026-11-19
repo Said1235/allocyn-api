@@ -1417,7 +1417,7 @@ function toReceiptDto(r) {
 }
 
 // packages/sdk/src/client.ts
-var SDK_VERSION = "0.1.0";
+var SDK_VERSION = "0.2.0";
 var TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 function bad2(field, message) {
   return new AllocynError("INVALID_ARGUMENT", message, { field });
@@ -1755,6 +1755,18 @@ function loadConfig(env = process.env) {
   } catch {
     throw new ConfigError("API_BASE_URL must be an absolute URL.");
   }
+  let appUrl = null;
+  const rawApp = env.APP_URL?.trim();
+  if (rawApp) {
+    let u;
+    try {
+      u = new URL(rawApp);
+    } catch {
+      throw new ConfigError("APP_URL must be an absolute URL.");
+    }
+    if (u.protocol !== "https:" && !(nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) throw new ConfigError("APP_URL must use https.");
+    appUrl = u.origin + u.pathname.replace(/\/+$/, "");
+  }
   const rawCors = env.CORS_ORIGINS?.trim();
   let corsOrigins;
   if (rawCors === void 0 || rawCors === "") corsOrigins = nodeEnv === "production" ? [] : ["*"];
@@ -1782,6 +1794,7 @@ function loadConfig(env = process.env) {
     network,
     contractAddress: addr2,
     apiBaseUrl,
+    appUrl,
     corsOrigins,
     port,
     host: env.HOST?.trim() || "0.0.0.0",
@@ -1993,7 +2006,10 @@ function parseQuery(route, raw) {
   const out = {};
   for (const q of route.query ?? []) {
     const v = raw.get(q.name);
-    if (v === null) continue;
+    if (v === null) {
+      if (q.required) throw new ApiError(400, "INVALID_ARGUMENT", `${q.name} is required.`, { field: q.name });
+      continue;
+    }
     const s = q.schema;
     const bad3 = (msg) => new ApiError(400, "INVALID_ARGUMENT", `${q.name} ${msg}`, { field: q.name });
     if (s.type === "integer") {
@@ -2108,6 +2124,81 @@ async function waitForJob(ctx, consistency) {
     if (Date.now() - started + ctx.pollMs >= waitMs) return { changed: false, version, waitedSeconds: waited, job };
     await sleep(ctx.pollMs);
   }
+}
+
+// packages/api/src/prepare.ts
+var PREPARE_QUERY = [
+  { name: "action", description: "What the person wants to do: `accept` the job, `submit` a delivery, or `evaluate` the delivery that is waiting to be judged.", schema: { type: "string", enum: ["accept", "submit", "evaluate"] }, example: "accept", required: true },
+  { name: "deliveryUrl", description: "For `submit` only: the public https page the worker will deliver.", schema: { type: "string", pattern: '^https://[^\\s"<>]{3,2000}$' }, example: "https://example.org/work" },
+  { name: "actor", description: "Optional. The address that would sign. When given, the answer also says whether that address is allowed to do it.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
+];
+async function prepareAction(ctx, consistency) {
+  const jobId2 = ctx.params.jobId;
+  const action = ctx.query.get("action");
+  if (!action) throw new ApiError(400, "INVALID_ARGUMENT", "action is required.", { field: "action" });
+  const deliveryUrl = ctx.query.get("deliveryUrl");
+  const actor = ctx.query.get("actor")?.toLowerCase() ?? null;
+  if (action === "submit" && !deliveryUrl) throw new ApiError(400, "INVALID_ARGUMENT", "deliveryUrl is required for action=submit.", { field: "deliveryUrl" });
+  if (action !== "submit" && deliveryUrl) throw new ApiError(400, "INVALID_ARGUMENT", "deliveryUrl is only used with action=submit.", { field: "deliveryUrl" });
+  const client = ctx.client(consistency);
+  const job = await client.getJob(jobId2);
+  const receipts = job.receiptIds.length ? await client.getJobReceipts(jobId2) : [];
+  const pending = [...receipts].reverse().find((r) => r.status === "PENDING") ?? null;
+  const reasons = [];
+  const max = CONTRACT_LIMITS.maxDeliveriesPerJob;
+  let who;
+  let intent;
+  let sdk;
+  let appPath;
+  if (action === "accept") {
+    who = "any account except the client";
+    if (job.status !== "OPEN") reasons.push(`The job is ${job.status}; only an OPEN job can be accepted.`);
+    if (actor && actor === job.client) reasons.push("The client cannot accept their own job.");
+    intent = { contractMethod: "accept_job", args: [job.id] };
+    sdk = `await allocyn.acceptJob("${job.id}")`;
+    appPath = `/agreements/${encodeURIComponent(job.id)}`;
+  } else if (action === "submit") {
+    who = job.worker ? `the job's worker (${job.worker})` : "the job's worker (no worker has accepted yet)";
+    if (!job.worker) reasons.push("Nobody has accepted the job yet, so there is no worker to deliver.");
+    if (!["IN_PROGRESS", "NEEDS_REVISION", "INCONCLUSIVE"].includes(job.status)) reasons.push(`The job is ${job.status}; a delivery needs IN_PROGRESS, NEEDS_REVISION or INCONCLUSIVE.`);
+    if (job.deliveryCount >= max) reasons.push(`All ${max} deliveries have been used.`);
+    if (actor && job.worker && actor !== job.worker) reasons.push("Only the job's worker can deliver.");
+    intent = { contractMethod: "submit_delivery", args: [job.id, deliveryUrl] };
+    sdk = `await allocyn.submitDelivery("${job.id}", ${JSON.stringify(deliveryUrl)})`;
+    appPath = `/agreements/${encodeURIComponent(job.id)}/deliver`;
+  } else {
+    who = "the job's client or its worker";
+    if (job.status !== "IN_PROGRESS") reasons.push(`The job is ${job.status}; only an IN_PROGRESS job can be evaluated.`);
+    if (!pending) reasons.push("No delivery is waiting to be judged.");
+    if (actor && actor !== job.client && actor !== job.worker) reasons.push("Only the job's client or its worker can ask for an evaluation.");
+    intent = { contractMethod: "evaluate_delivery", args: [pending?.id ?? "(no pending receipt)"] };
+    sdk = `await allocyn.evaluateDelivery("${job.id}", ${pending?.deliveryIndex ?? "<delivery number>"})`;
+    appPath = `/agreements/${encodeURIComponent(job.id)}`;
+  }
+  if (isFinalJob(job) && !reasons.length) reasons.push("The job is already final.");
+  const canProceed = reasons.length === 0;
+  return {
+    jobId: job.id,
+    action,
+    status: job.status,
+    final: isFinalJob(job),
+    canProceed,
+    reasons,
+    whoMaySign: who,
+    ...actor ? { actor } : {},
+    intent: canProceed ? intent : null,
+    sdk: canProceed ? sdk : null,
+    appLink: canProceed && ctx.appUrl ? `${ctx.appUrl}${appPath}` : null,
+    sent: false,
+    readAt: ctx.now().toISOString(),
+    next: canProceed ? "Show this to the person. They open the app link, or run the SDK call, and confirm in their own wallet. Nothing has been sent or signed." : "Do not proceed. Explain the reasons to the person.",
+    notes: [
+      "This answer only reads the contract. It builds no transaction and sends nothing.",
+      "The person signs in their own wallet. The contract checks everything again at that moment, so the state may have changed.",
+      ...action === "submit" ? ["The app's delivery page does not pre-fill the link: the person pastes deliveryUrl there."] : [],
+      ...canProceed && !ctx.appUrl ? ["This API has no APP_URL configured, so there is no app link. Use the SDK call instead."] : []
+    ]
+  };
 }
 
 // packages/api/src/routes.ts
@@ -2248,6 +2339,21 @@ var ROUTES = [
   },
   {
     method: "GET",
+    path: "/v1/jobs/{jobId}/prepare",
+    operationId: "prepareAction",
+    tag: "Jobs",
+    summary: "Prepare an action for the person to sign",
+    description: "Checks whether accepting, delivering or evaluating is possible on this job right now, and says exactly what the person would sign: the contract call, the SDK call and a link to the Allocyn app. It only READS the contract: it builds no transaction, holds no key and sends nothing (`sent` is always false). The person signs in their own wallet, and the contract checks everything again at that moment. For an agent: use it to start a flow, never to act on someone's behalf.",
+    pathParams: [jobId],
+    query: PREPARE_QUERY,
+    chainRead: true,
+    cache: "no-store",
+    schemaRef: "PreparedAction",
+    errors: [400, 404, 429, 502],
+    handler: async (ctx, c) => prepareAction(ctx, c)
+  },
+  {
+    method: "GET",
     path: "/v1/jobs/{jobId}/receipts",
     operationId: "listJobReceipts",
     tag: "Receipts",
@@ -2385,6 +2491,23 @@ var SCHEMAS = {
   }),
   JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str2, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int3 }),
   JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int3, description: "How many job ids were read for this page." } }),
+  PreparedAction: obj({
+    jobId: { type: "string" },
+    action: { type: "string", enum: ["accept", "submit", "evaluate"] },
+    status: { type: "string" },
+    final: { type: "boolean" },
+    canProceed: { type: "boolean", description: "True when the contract would accept this action from the right account right now." },
+    reasons: { type: "array", items: { type: "string" }, description: "Why not, when canProceed is false." },
+    whoMaySign: { type: "string" },
+    actor: { type: "string" },
+    intent: { type: ["object", "null"], description: "The contract call the person would sign. Null when canProceed is false." },
+    sdk: { type: ["string", "null"], description: "The same call with @allocyn/sdk." },
+    appLink: { type: ["string", "null"], description: "A link to the Allocyn app, when APP_URL is configured." },
+    sent: { type: "boolean", description: "Always false: nothing is sent or signed here." },
+    readAt: { type: "string", format: "date-time" },
+    next: { type: "string" },
+    notes: { type: "array", items: { type: "string" } }
+  }, ["jobId", "action", "status", "final", "canProceed", "reasons", "whoMaySign", "intent", "sdk", "appLink", "sent", "readAt", "next", "notes"]),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -2440,7 +2563,7 @@ function buildOpenApi(cfg) {
   for (const r of ROUTES) {
     const parameters = r.pathParams.map((p) => ({ name: p.name, in: "path", required: true, description: p.description, schema: p.schema, example: p.example }));
     if (r.chainRead) parameters.push({ name: "consistency", in: "query", required: false, description: '"latest" (default) includes non-final state; "final" reads finalized state only (genlayer-js `latest-final`).', schema: { type: "string", enum: ["latest", "final"] } });
-    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: false, description: q.description, schema: { type: q.schema.type, ...q.schema.enum ? { enum: q.schema.enum } : {}, ...q.schema.pattern ? { pattern: q.schema.pattern } : {}, ...q.schema.minimum !== void 0 ? { minimum: q.schema.minimum } : {}, ...q.schema.maximum !== void 0 ? { maximum: q.schema.maximum } : {} }, example: q.example });
+    for (const q of r.query ?? []) parameters.push({ name: q.name, in: "query", required: !!q.required, description: q.description, schema: { type: q.schema.type, ...q.schema.enum ? { enum: q.schema.enum } : {}, ...q.schema.pattern ? { pattern: q.schema.pattern } : {}, ...q.schema.minimum !== void 0 ? { minimum: q.schema.minimum } : {}, ...q.schema.maximum !== void 0 ? { maximum: q.schema.maximum } : {} }, example: q.example });
     if (r.deep) parameters.push({ name: "deep", in: "query", required: false, description: "`true` also reads the contract once.", schema: { type: "string", enum: ["true", "false"] } });
     const responses = {
       "200": {
@@ -2458,7 +2581,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.2.0",
+      version: "1.3.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2484,13 +2607,92 @@ function makeCtx(deps, params, query) {
     },
     now: () => new Date(deps.now()),
     timeoutMs: deps.timeoutMs,
-    pollMs: deps.pollMs ?? 1500
+    pollMs: deps.pollMs ?? 1500,
+    appUrl: deps.appUrl ?? null
   };
+}
+
+// packages/api/src/verify-page.ts
+var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var short = (a) => a ? `${a.slice(0, 6)}\u2026${a.slice(-4)}` : "none yet";
+var hex = (h) => h ? `${h.slice(0, 12)}\u2026` : "-";
+var VERIFY_CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+var CSS = `
+:root{color-scheme:dark light;--bg:#050707;--surface:#0c1110;--surface2:#131a18;--ink:#edebe4;--ink2:#b7bbb3;--ink3:#8e948c;--line:#1d2523;--line2:#364240;--accent:#fcb21b;--tint:#2a2007;--ok:#5ed3a5;--warn:#f2924a;--err:#ff8f94}
+@media(prefers-color-scheme:light){:root{--bg:#f2f3f0;--surface:#fff;--surface2:#e9ece8;--ink:#0f1512;--ink2:#414a45;--ink3:#59625d;--line:#d6dbd6;--line2:#a9b2ac;--accent:#b97700;--tint:#fff0cc;--ok:#146b4a;--warn:#9a4308;--err:#a8323a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Inter,sans-serif}
+main{max-width:820px;margin:0 auto;padding:28px 18px 64px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;color:var(--ink3);font-size:14px;margin-bottom:28px}
+.top b{color:var(--ink);font-weight:600}.top a{color:var(--ink2)}
+h1{font-size:clamp(26px,5vw,38px);line-height:1.15;letter-spacing:-.02em;margin:0 0 14px;overflow-wrap:anywhere}
+h2{font-size:15px;margin:30px 0 10px;color:var(--ink2);font-weight:600}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.pill{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line2);border-radius:999px;padding:3px 11px;color:var(--ink2)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}.pill.warn{color:var(--warn);border-color:var(--warn)}.pill.bad{color:var(--err);border-color:var(--err)}.pill.gold{color:var(--accent);border-color:var(--accent);background:var(--tint)}
+.lede{color:var(--ink2);margin:0}
+.box{border:1px solid var(--line2);border-radius:12px;background:var(--surface);overflow:hidden}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:start;padding:12px 16px;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}
+.row .id{font:600 12.5px ui-monospace,Menlo,monospace;color:var(--ink3);padding-top:2px}.row .t{overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+th{background:var(--surface2);color:var(--ink);border-bottom:2px solid var(--accent)}tbody th{border-bottom:1px solid var(--line)}th:last-child,td:last-child{border-right:0}tr:last-child td{border-bottom:0}
+.tw{overflow-x:auto}
+code,pre{font:13px ui-monospace,SFMono-Regular,Menlo,monospace}pre{margin:0;padding:14px 16px;overflow-x:auto;color:var(--ink2)}
+a{color:var(--accent)}
+.note{font-size:14px;color:var(--ink3);margin-top:28px;border-top:1px solid var(--line);padding-top:16px}
+`;
+var TONE = { VERIFIED: "ok", MET: "ok", NEEDS_REVISION: "warn", NOT_MET: "warn", INCONCLUSIVE: "bad", UNVERIFIABLE: "bad", IN_PROGRESS: "gold", OPEN: "" };
+var WORDS = {
+  VERIFIED: "Validators judged that every written criterion was met by the delivered page.",
+  NEEDS_REVISION: "Validators judged at least one written criterion as not met.",
+  INCONCLUSIVE: "Validators could not find enough evidence on the page to decide at least one criterion.",
+  IN_PROGRESS: "A worker accepted this job. The delivery has not been judged, or is waiting for a new delivery.",
+  OPEN: "The terms are written. No worker has accepted the job yet."
+};
+function layout(title, description, body, status) {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc2(title)}</title><meta name="description" content="${esc2(description)}"><meta name="robots" content="noindex,nofollow">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Allocyn"><meta property="og:title" content="${esc2(title)}"><meta property="og:description" content="${esc2(description)}"><meta name="twitter:card" content="summary">
+<style>${CSS}</style></head><body><main><div class="top"><span><b>Allocyn</b> verification page</span><a href="/docs/">Docs</a></div>${body}</main></body></html>`;
+  return { status, html };
+}
+async function renderVerifyPage(ctx, consistency, baseUrl) {
+  const proof = await buildProof(ctx, consistency);
+  const { job, deliveries } = proof.facts;
+  const judged = [...deliveries].reverse().find((d) => d.status === "EVALUATED");
+  const resultFor = (cid) => judged?.results.find((r) => r.criterionId === cid)?.status ?? null;
+  const api = baseUrl ?? "https://YOUR-API";
+  const pills = [`<span class="pill ${TONE[job.status] ?? ""}">${esc2(job.status)}</span>`, `<span class="pill ${proof.final ? "ok" : "gold"}">${proof.final ? "final" : "not final"}</span>`, `<span class="pill">${esc2(proof.network.name)}</span>`].join("");
+  const criteria = job.criteria.map((c) => {
+    const r = resultFor(c.id);
+    return `<div class="row"><span class="id">${esc2(c.id)}</span><span class="t">${esc2(c.text)}</span><span class="pill ${r ? TONE[r] ?? "" : ""}">${r ? esc2(r) : "not judged yet"}</span></div>`;
+  }).join("");
+  const deliveryRows = deliveries.map((d) => {
+    const safeLink = /^https:\/\//i.test(d.url) ? `<a href="${esc2(d.url)}" rel="noopener noreferrer nofollow ugc">${esc2(d.url)}</a>` : esc2(d.url);
+    return `<tr><td>${d.deliveryIndex}</td><td>${safeLink}</td><td>${esc2(d.status)}${d.overallStatus ? ` \xB7 ${esc2(d.overallStatus)}` : ""}</td><td><code>${esc2(hex(d.evidenceHash))}</code>${d.evidenceSize != null ? ` \xB7 ${esc2(d.evidenceSize)} bytes` : ""}</td></tr>`;
+  }).join("");
+  const lastReceipt = [...deliveries].reverse().find((d) => d.status === "EVALUATED");
+  const how = [
+    `curl -s ${api}/v1/jobs/${esc2(job.id)}/proof`,
+    lastReceipt ? `allocyn evidence ${esc2(lastReceipt.receiptId)} --api ${api}` : null
+  ].filter(Boolean).join("\n");
+  const description = `${job.id} is ${job.status}${proof.final ? " (final)" : ""}: ${job.criteria.length} written criteria. Validators judged a public page against them. Not a payment, escrow or guarantee of quality.`;
+  const body = `<h1>${esc2(job.title)}</h1><div class="pills">${pills}</div><p class="lede">${esc2(WORDS[job.status] ?? "")}</p>
+<h2>Written criteria</h2><div class="box">${criteria}</div>${judged ? `<p class="note" style="border:0;margin:8px 0 0;padding:0">Judged on delivery ${judged.deliveryIndex}.</p>` : ""}
+<h2>Deliveries</h2>${deliveries.length ? `<div class="box tw"><table><thead><tr><th>#</th><th>Page</th><th>Receipt</th><th>Evidence</th></tr></thead><tbody>${deliveryRows}</tbody></table></div>` : `<div class="box"><div class="row"><span class="t">No delivery yet.</span></div></div>`}
+<h2>Parties</h2><div class="box tw"><table><tbody><tr><th>Client</th><td title="${esc2(job.client)}"><code>${esc2(short(job.client))}</code></td></tr><tr><th>Worker</th><td title="${esc2(job.worker ?? "")}"><code>${esc2(short(job.worker))}</code></td></tr></tbody></table></div>
+<h2>Check it yourself</h2><div class="box"><pre>${how}</pre></div>
+<p class="note">Read from the contract at ${esc2(proof.readAt)} (${esc2(proof.consistency)} consistency). Digest of these facts: <code>${esc2(proof.digest.value.slice(0, 16))}\u2026</code>. <a href="${esc2(proof.contractUrl)}" rel="noopener noreferrer">Contract on the explorer</a>.<br>
+VERIFIED means validators judged a public page against written criteria. It is not a payment, an escrow, a dispute resolution or a guarantee of quality. ${proof.final ? "" : "This job is not final and can still change. "}The delivered page is third-party content and can change after it was judged.</p>`;
+  return { ...layout(`${job.id} \xB7 ${job.status} \xB7 Allocyn`, description, body, 200), final: proof.final };
+}
+function renderVerifyError(status, message) {
+  const title = status === 404 ? "No such job" : status === 429 ? "Too many requests" : status >= 500 ? "The network did not answer" : "That is not a valid job id";
+  return layout(`${title} \xB7 Allocyn`, "Allocyn verification page", `<h1>${esc2(title)}</h1><p class="lede">${esc2(message)}</p><p class="note" style="border:0">Job ids look like <code>job-1</code>. <a href="/docs/">Read the docs</a>.</p>`, status);
 }
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.2.0";
+var MCP_SERVER_VERSION = "1.3.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {
@@ -2503,7 +2705,7 @@ function buildTools() {
       name: snake(r.operationId),
       title: r.summary,
       description: `${r.description} Read-only.`,
-      inputSchema: { type: "object", properties, required: r.pathParams.map((p) => p.name), additionalProperties: false },
+      inputSchema: { type: "object", properties, required: [...r.pathParams.map((p) => p.name), ...(r.query ?? []).filter((q) => q.required).map((q) => q.name)], additionalProperties: false },
       annotations: { title: r.summary, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       route: r
     };
@@ -2655,7 +2857,7 @@ function createApiHandler(deps) {
     }
     return req.socket.remoteAddress ?? "unknown";
   };
-  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...deps.waitPollMs ? { pollMs: deps.waitPollMs } : {} }, params, query);
+  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}, appUrl: config.appUrl }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
   return async (req, res) => {
     const id = randomUUID();
@@ -2709,6 +2911,27 @@ function createApiHandler(deps) {
         }
         const reply = await mcp.handle(payload);
         return reply ? sendJson(200, reply, rlHeaders()) : send(202, "", rlHeaders());
+      }
+      const verify = /^\/verify\/([^/]+)\/?$/.exec(pathname);
+      if (verify && (method === "GET" || method === "HEAD")) {
+        const htmlHeaders = { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": VERIFY_CSP };
+        try {
+          rl = await limiter.check(clientKey(req));
+          if (!rl.allowed) throw new ApiError(429, "RATE_LIMITED", "Too many requests. Wait a moment and reload.", { retryable: true, headers: { "Retry-After": String(rl.retryAfterSec) } });
+          let timer;
+          const page = await Promise.race([
+            renderVerifyPage(ctxFor({ jobId: verify[1] }, new URLSearchParams()), config.readConsistency, config.apiBaseUrl || null),
+            new Promise((_, rej) => {
+              timer = setTimeout(() => rej(new ApiError(504, "UPSTREAM_TIMEOUT", "The network took too long to answer.", { retryable: true })), config.requestTimeoutMs);
+            })
+          ]).finally(() => clearTimeout(timer));
+          return send(200, method === "HEAD" ? "" : page.html, { ...htmlHeaders, ...rlHeaders(), "Cache-Control": page.final ? "public, max-age=300" : "no-cache" });
+        } catch (err) {
+          const e = toApiError(err);
+          const msg = e.status === 404 ? "This job does not exist on the contract." : e.status === 429 ? e.message : e.status >= 500 ? "The network did not answer. Try again in a moment." : "Check the id and try again.";
+          const page = renderVerifyError(e.status, msg);
+          return send(page.status, method === "HEAD" ? "" : page.html, { ...htmlHeaders, ...rlHeaders(), "Cache-Control": "no-store", ...e.extra.headers ?? {} });
+        }
       }
       if (pathname === "/openapi.json" && (method === "GET" || method === "HEAD")) {
         return send(200, method === "HEAD" ? "" : openapi, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300" });

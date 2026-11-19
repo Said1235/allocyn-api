@@ -1,6 +1,6 @@
 # Allocyn API reference for agents
 
-Generated from API 1.2.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
+Generated from API 1.3.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
 
 | Endpoint | MCP tool | Parameters | What it does |
 |---|---|---|---|
@@ -12,6 +12,7 @@ Generated from API 1.2.0. Every endpoint is `GET`. Answers are JSON `{ success, 
 | `GET /v1/jobs/{jobId}/proof` | `get_job_proof` | `jobId`, `?consistency` (latest or final) | Proof summary of a job. A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. |
 | `GET /v1/jobs/{jobId}/badge.svg` | REST only | `jobId`, `?consistency` (latest or final) | Status badge (SVG). A small SVG badge with the job's status, for a README or a portfolio: ![job](https://your-api/v1/jobs/job-1/badge.svg). |
 | `GET /v1/jobs/{jobId}/wait` | `wait_for_job` | `jobId`, `?since` (string), `?timeout` (integer, max 25), `?consistency` (latest or final) | Wait for a job to change. Long poll, instead of webhooks. |
+| `GET /v1/jobs/{jobId}/prepare` | `prepare_action` | `jobId`, `?action` (accept, submit, evaluate), `?deliveryUrl` (string), `?actor` (string), `?consistency` (latest or final) | Prepare an action for the person to sign. Checks whether accepting, delivering or evaluating is possible on this job right now, and says exactly what the person would sign: the contract call, the SDK call and a link to the Allocyn app. |
 | `GET /v1/jobs/{jobId}/receipts` | `list_job_receipts` | `jobId`, `?consistency` (latest or final) | List a job's receipts. Every receipt of the job, in delivery order (delivery 1 first). |
 | `GET /v1/jobs/{jobId}/receipts/{deliveryIndex}` | `get_job_receipt_by_index` | `jobId`, `deliveryIndex`, `?consistency` (latest or final) | Read one receipt by delivery number. The receipt of delivery N of a job. |
 | `GET /v1/receipts/{receiptId}` | `get_receipt` | `receiptId`, `?consistency` (latest or final) | Read a receipt by id. A receipt by its contract id. |

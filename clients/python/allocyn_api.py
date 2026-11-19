@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 class AllocynApiError(Exception):
@@ -99,6 +99,10 @@ class AllocynApi:
     def wait_for_job(self, job_id: str, *, consistency: Optional[str] = None, since: Optional[str] = None, timeout: Optional[int] = None) -> Any:
         """Wait for a job to change. Long poll, instead of webhooks."""
         return self._get(f"/v1/jobs/{_q(job_id)}/wait", {"consistency": consistency, "since": since, "timeout": timeout})
+
+    def prepare_action(self, job_id: str, *, consistency: Optional[str] = None, action: Optional[str] = None, delivery_url: Optional[str] = None, actor: Optional[str] = None) -> Any:
+        """Prepare an action for the person to sign. Checks whether accepting, delivering or evaluating is possible on this job right now, and says exactly what the person would sign: the contract call, the SDK call and a link to the Allocyn app."""
+        return self._get(f"/v1/jobs/{_q(job_id)}/prepare", {"consistency": consistency, "action": action, "deliveryUrl": delivery_url, "actor": actor})
 
     def list_job_receipts(self, job_id: str, *, consistency: Optional[str] = None) -> Any:
         """List a job's receipts. Every receipt of the job, in delivery order (delivery 1 first)."""

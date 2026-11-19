@@ -52,6 +52,7 @@ const SAMPLE: Record<string, string> = {
   "/v1/jobs/{jobId}": "/v1/jobs/job-1",
   "/v1/jobs/{jobId}/proof": "/v1/jobs/job-1/proof",
   "/v1/jobs/{jobId}/wait": "/v1/jobs/job-1/wait",
+  "/v1/jobs/{jobId}/prepare": "/v1/jobs/job-1/prepare?action=evaluate",
   "/v1/jobs/{jobId}/badge.svg": "/v1/jobs/job-1/badge.svg",
   "/v1/jobs/{jobId}/receipts": "/v1/jobs/job-1/receipts",
   "/v1/jobs/{jobId}/receipts/{deliveryIndex}": "/v1/jobs/job-1/receipts/1",

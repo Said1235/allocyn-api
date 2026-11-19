@@ -6,6 +6,8 @@ export interface ApiConfig {
   network: NetworkName;
   contractAddress: string | null; // null = use the SDK's address for the network
   apiBaseUrl: string;
+  /** Where the Allocyn web app lives (https). Used only to build links in prepared actions. Optional. */
+  appUrl: string | null;
   corsOrigins: string[]; // exact origins, or ["*"]
   port: number;
   host: string;
@@ -58,6 +60,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const apiBaseUrl = (env.API_BASE_URL?.trim() || `http://localhost:${port}`).replace(/\/+$/, "");
   try { new URL(apiBaseUrl); } catch { throw new ConfigError("API_BASE_URL must be an absolute URL."); }
 
+  let appUrl: string | null = null;
+  const rawApp = env.APP_URL?.trim();
+  if (rawApp) {
+    let u: URL; try { u = new URL(rawApp); } catch { throw new ConfigError("APP_URL must be an absolute URL."); }
+    if (u.protocol !== "https:" && !(nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) throw new ConfigError("APP_URL must use https.");
+    appUrl = u.origin + u.pathname.replace(/\/+$/, "");
+  }
+
   const rawCors = env.CORS_ORIGINS?.trim();
   let corsOrigins: string[];
   if (rawCors === undefined || rawCors === "") corsOrigins = nodeEnv === "production" ? [] : ["*"];
@@ -76,7 +86,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (storeUrl) { let u: URL; try { u = new URL(storeUrl); } catch { throw new ConfigError("UPSTASH_REDIS_REST_URL must be an absolute URL."); } if (u.protocol !== "https:") throw new ConfigError("UPSTASH_REDIS_REST_URL must use https."); }
 
   return {
-    nodeEnv, network, contractAddress: addr, apiBaseUrl, corsOrigins, port,
+    nodeEnv, network, contractAddress: addr, apiBaseUrl, appUrl, corsOrigins, port,
     host: env.HOST?.trim() || "0.0.0.0",
     rateLimit: { max: int("RATE_LIMIT_MAX", env.RATE_LIMIT_MAX, 60, 1, 100000), windowMs: int("RATE_LIMIT_WINDOW_MS", env.RATE_LIMIT_WINDOW_MS, 60000, 1000, 3600000) },
     rateLimitStore: storeUrl ? { url: storeUrl, token: storeToken } : null,

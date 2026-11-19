@@ -7,6 +7,7 @@ export interface CtxDeps {
   now: () => number;
   timeoutMs: number;
   pollMs?: number;
+  appUrl?: string | null;
 }
 
 /** Builds the context every route handler receives. Shared by the REST server and the MCP server, so both read the contract the same way. */
@@ -20,6 +21,6 @@ export function makeCtx(deps: CtxDeps, params: Record<string, string>, query: UR
       catch (e) { if ((e as { code?: string }).code !== "JOB_NOT_FOUND") throw e; }
     },
     now: () => new Date(deps.now()),
-    timeoutMs: deps.timeoutMs, pollMs: deps.pollMs ?? 1500,
+    timeoutMs: deps.timeoutMs, pollMs: deps.pollMs ?? 1500, appUrl: deps.appUrl ?? null,
   };
 }

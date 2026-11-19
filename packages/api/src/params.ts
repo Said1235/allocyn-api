@@ -7,6 +7,8 @@ export interface QueryParam {
   description: string;
   schema: { type: "string" | "integer" | "boolean"; enum?: string[]; pattern?: string; minimum?: number; maximum?: number; default?: string | number };
   example: string;
+  /** The caller must send it. */
+  required?: boolean;
 }
 
 /** Checks the route's own query parameters. Returns the accepted ones as strings. Throws a 400 that names the field. */
@@ -14,7 +16,10 @@ export function parseQuery(route: Pick<Route, "query">, raw: URLSearchParams): R
   const out: Record<string, string> = {};
   for (const q of route.query ?? []) {
     const v = raw.get(q.name);
-    if (v === null) continue;
+    if (v === null) {
+      if (q.required) throw new ApiError(400, "INVALID_ARGUMENT", `${q.name} is required.`, { field: q.name });
+      continue;
+    }
     const s = q.schema;
     const bad = (msg: string) => new ApiError(400, "INVALID_ARGUMENT", `${q.name} ${msg}`, { field: q.name });
     if (s.type === "integer") {

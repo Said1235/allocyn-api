@@ -45,6 +45,20 @@ It reads the same environment variables as the API (`GENLAYER_NETWORK`, `ALLOCYN
 
 Arguments are checked before anything is read. A bad argument or a missing job comes back as a tool error (`isError: true`) whose body is the API's usual `{ "success": false, "error": { ... } }`, so an agent can read the `code` and `retryable` fields and decide what to do.
 
+## Starting an action without performing it
+
+`prepare_action` (`GET /v1/jobs/{jobId}/prepare`) lets an agent help a person **start** accepting, delivering or evaluating a job. It only reads the contract and answers:
+
+- `canProceed`, and `reasons` when it is false (the job is not `OPEN`, the address is the client, no delivery is waiting, all deliveries are used…).
+- `whoMaySign`, the contract call (`intent`), the same call with `@allocyn/sdk` (`sdk`) and a link to the Allocyn app (`appLink`, when the API has an `APP_URL`).
+- `sent`, which is **always `false`**.
+
+The person confirms in their own wallet, and the contract checks everything again at that moment, so the answer can be out of date by then. The app's delivery page does not pre-fill the link: the person pastes the `deliveryUrl` there. The agent never signs, never holds a key and must not say an action was done.
+
+```bash
+curl "$API/v1/jobs/job-2/prepare?action=accept&actor=0xYourAddress"
+```
+
 ## What an agent should know
 
 - Ids come from the contract (`job-1`, `rcpt-1`). An agent must never invent one.

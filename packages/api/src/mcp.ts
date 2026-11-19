@@ -9,7 +9,7 @@ import { parseQuery } from "./params.ts";
  * the same errors. All tools are read-only: nothing here can sign or send a transaction.
  */
 export const MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
-export const MCP_SERVER_VERSION = "1.2.0";
+export const MCP_SERVER_VERSION = "1.3.0";
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 interface Rpc { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown> }
@@ -34,7 +34,7 @@ export function buildTools(): McpTool[] {
     return {
       name: snake(r.operationId), title: r.summary,
       description: `${r.description} Read-only.`,
-      inputSchema: { type: "object", properties, required: r.pathParams.map((p) => p.name), additionalProperties: false },
+      inputSchema: { type: "object", properties, required: [...r.pathParams.map((p) => p.name), ...(r.query ?? []).filter((q) => q.required).map((q) => q.name)], additionalProperties: false },
       annotations: { title: r.summary, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       route: r,
     };

@@ -5,7 +5,23 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.2.0), **SDK 0.1.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.3.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.3.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
+
+The routes and shapes of 1.0.0 to 1.2.0 did not change. Everything below is added.
+
+**Added**
+- **`checkEvidence`** in `@allocyn/sdk` and **`allocyn evidence <rcpt-id>`** in the CLI: download the delivered page on your own machine and compare its SHA-256 with the one the receipt recorded. The API never fetches third-party pages. See [Verification results](verification-results.html).
+- **`/verify/{jobId}`**: a readable, shareable page for one job (status, criteria with verdicts, deliveries, how to check it). No script, everything escaped, strict CSP, never cached while the job is not final.
+- **`GET /v1/jobs/{jobId}/prepare`** and the MCP tool **`prepare_action`**: check whether accepting, delivering or evaluating is possible, and show exactly what the person would sign, with an SDK call and a link to the app. It only reads (`sent` is always `false`). New optional setting `APP_URL`.
+- `allocyn prepare` in the CLI, the matching method in the Python client, and a section in the [agent skill](agent-skill.html) on how to help someone act without acting for them.
+- Required query parameters (`required` in the route table, enforced for REST and MCP).
+
+**Not verified yet**
+- The evidence comparison assumes the recorded hash is of the raw bytes, as documented. It was tested with stand-in pages and the simulated contract, not against an evaluated receipt on Studionet.
+- The app links assume the web app's routes (`/agreements/{id}` and `/agreements/{id}/deliver`), taken from its source; they were not opened in a browser. The delivery page does not pre-fill the link.
+- The verification page has no preview image: image previews need a PNG and this API has no image renderer.
 
 ## 1.2.0 (API) · 0.1.0 (SDK) · 0.1.0 (CLI)
 
