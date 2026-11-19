@@ -1,0 +1,35 @@
+name: Index
+
+# Copies the contract's jobs and receipts into the Supabase tables, about once an hour.
+# The secret key lives only in this repository's secrets. The public API function never sees it.
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - name: Are the secrets set?
+        id: chk
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SECRET_KEY" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "ready=false" >> "$GITHUB_OUTPUT"; echo "SUPABASE_URL and SUPABASE_SECRET_KEY are not set in this repository's secrets. Nothing to do."; fi
+      - uses: actions/checkout@v4
+        if: steps.chk.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.chk.outputs.ready == 'true'
+        with:
+          node-version: 22
+      - run: npm install
+        if: steps.chk.outputs.ready == 'true'
+      - run: npm run index
+        if: steps.chk.outputs.ready == 'true'

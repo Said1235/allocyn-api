@@ -13,6 +13,7 @@
     "sync:check": "node scripts/sync-core.mjs --check",
     "docs:build": "node docs/build.mjs",
     "start": "npm start -w @allocyn/api",
+    "index": "node packages/api/src/index-cli.ts",
     "vercel:build": "npm run docs:build && node scripts/build-vercel.mjs",
     "vercel:check": "node scripts/build-vercel.mjs --check",
     "test:mcp-client": "python3 -I scripts/mcp-client-check.py",

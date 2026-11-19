@@ -11,7 +11,7 @@ Job titles, descriptions, criteria, addresses, delivery URLs and verdicts are st
 
 ## What the API stores
 
-No jobs, no accounts and no sessions. The only thing it keeps is request counters for rate limiting, in memory by default, or in an optional counter store you configure (see [Limits](limits.html)); a store only receives a hash of the client address and a count. For a short time it also keeps in memory the answers that can never change again, such as an evaluated receipt read with `?consistency=final`, so it does not read them twice. It writes a log line per request (method, path, status, duration, request id). It does not log request bodies, and there are none: it is read-only.
+The API itself stores no jobs, no accounts and no sessions. (An optional separate indexer can copy the public jobs and receipts into a database you own; see [Deploying](deploy.html). That copy holds only what is already public on the network.) The only thing it keeps is request counters for rate limiting, in memory by default, or in an optional counter store you configure (see [Limits](limits.html)); a store only receives a hash of the client address and a count. For a short time it also keeps in memory the answers that can never change again, such as an evaluated receipt read with `?consistency=final`, so it does not read them twice. It writes a log line per request (method, path, status, duration, request id). It does not log request bodies, and there are none: it is read-only.
 
 ## Keys
 
