@@ -44,11 +44,19 @@ button.icon:hover{background:var(--surface-2)}
 .menu-btn{display:none}
 .layout{display:grid;grid-template-columns:260px minmax(0,1fr) 220px;gap:0;max-width:1320px;margin:0 auto}
 nav.side{position:sticky;top:var(--header-h);height:calc(100vh - var(--header-h));overflow:auto;padding:24px 16px 40px 20px;border-right:1px solid var(--line)}
-nav.side h2{font:600 12.5px var(--font-ui);color:var(--ink-3);margin:20px 0 6px;letter-spacing:.02em}
-nav.side h2:first-child{margin-top:0}
-nav.side a{display:block;padding:6px 10px;border-radius:7px;color:var(--ink-2);text-decoration:none;font-size:14.5px}
+nav.side .sf{margin:0 0 14px}
+nav.side .sf input{width:100%;height:36px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:0 12px;font:14px var(--font-ui)}
+nav.side details.grp{margin:0 0 4px}
+nav.side summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:7px;cursor:pointer;list-style:none;font:600 13px var(--font-ui);letter-spacing:.01em;color:var(--ink)}
+nav.side summary::-webkit-details-marker{display:none}
+nav.side summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:rotate(-45deg);transition:transform .18s;flex:none;margin-right:3px}
+nav.side details[open]>summary::after{transform:rotate(45deg)}
+nav.side summary:hover{background:var(--surface-2)}
+nav.side .items{margin:2px 0 8px 10px;padding-left:8px;border-left:1px solid var(--line)}
+nav.side a{display:block;padding:6px 10px;border-radius:7px;color:var(--ink-2);text-decoration:none;font-size:14px}
 nav.side a:hover{background:var(--surface-2);color:var(--ink)}
 nav.side a[aria-current=page]{background:var(--accent-tint);color:var(--accent-ink);font-weight:600}
+nav.side .sf-none{color:var(--ink-3);font-size:13.5px;padding:0 10px}
 main{padding:32px clamp(16px,4vw,48px) 96px;min-width:0}
 article{max-width:780px}
 article h1{font:500 clamp(28px,4vw,40px)/1.15 var(--font-display);margin:0 0 20px;letter-spacing:-.01em}
@@ -117,13 +125,21 @@ aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}
 .pager a{display:block;padding:12px 16px;border:1px solid var(--line-strong);border-radius:10px;text-decoration:none;color:var(--ink);background:var(--surface);min-width:140px}
 .pager small{display:block;color:var(--ink-3)}
 .pager a:last-child{text-align:right;margin-left:auto}
-.ep{margin:28px 0;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);overflow:hidden}
-.ep>header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ep{margin:16px 0;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);overflow:hidden}
+.ep>summary{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px;cursor:pointer;list-style:none;position:relative;padding-right:40px}
+.ep>summary::-webkit-details-marker{display:none}
+.ep>summary::after{content:"";position:absolute;right:18px;top:50%;width:8px;height:8px;margin-top:-6px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:rotate(-45deg);transition:transform .18s}
+.ep[open]>summary::after{transform:rotate(45deg)}
+.ep[open]>summary{border-bottom:1px solid var(--line)}
+.ep>summary:hover{background:var(--surface-2)}
 .ep .m{font:600 12px var(--font-mono);background:var(--ok);color:#04130C;border-radius:5px;padding:3px 8px}
 .ep .p{font:600 14.5px var(--font-mono);word-break:break-all}
+.ep .sum{color:var(--ink-3);font-size:13.5px;flex-basis:100%}
+@media(min-width:900px){.ep .sum{flex-basis:auto;margin-left:auto;margin-right:8px}}
 .ep .body{padding:4px 16px 16px}
 .ep h4{margin:18px 0 6px;font:600 13px var(--font-ui);color:var(--ink-3)}
-.ep .sim{font-size:12.5px;color:var(--ink-3)}
+.bulk{display:flex;gap:8px;margin:12px 0}
+.ep .sim,.sim{font-size:12.5px;color:var(--ink-3)}
 .try{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:8px 0}
 .try label{display:flex;flex-direction:column;font-size:12.5px;color:var(--ink-3);gap:3px}
 .try input,.try select{height:34px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink);border-radius:7px;padding:0 10px;font:13.5px var(--font-mono)}
@@ -167,3 +183,37 @@ aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}
 .card.warn{border-left:4px solid var(--warn)}
 .card.gold{border-left:4px solid var(--accent)}
 .card .code{margin:12px 0}
+
+/* Tables: on a phone every row becomes a small card, each value with its column name. Nothing scrolls sideways. */
+@media(max-width:720px){
+  .tbl{border:0;background:none;border-radius:0;overflow:visible;margin:16px 0}
+  .tbl table,.ep table{display:block}
+  .tbl thead,.ep thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .tbl tbody,.ep tbody{display:grid;gap:10px}
+  .tbl tr,.ep tbody tr{display:block;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);overflow:hidden}
+  .tbl td,.ep td{display:block;border:0;border-bottom:1px solid var(--line);padding:9px 12px;background:none!important;overflow-wrap:anywhere}
+  .tbl td:last-child,.ep td:last-child{border-bottom:0}
+  .tbl td::before,.ep td::before{content:attr(data-label);display:block;margin-bottom:2px;font:600 12px var(--font-ui);color:var(--ink-3)}
+  .tbl td[data-label=""]::before,.ep td[data-label=""]::before{display:none}
+  .tbl tbody tr:hover td,.ep tbody tr:hover td{background:none}
+  main{padding-top:22px}
+  article h2{font-size:21px;margin-top:36px}
+  .ep>summary{padding:11px 14px;padding-right:38px}
+  .ep .body{padding:2px 12px 14px}
+  .try{flex-direction:column;align-items:stretch}
+  .try input,.try select,.try button{width:100%}
+  .base{flex-direction:column;align-items:stretch}
+  .base label{max-width:none}
+  .pager{flex-direction:column}
+  .pager a{min-width:0}
+}
+/* Phone header: logo only, so the search box keeps a usable width. */
+@media(max-width:520px){
+  header.top{gap:8px;padding:0 12px}
+  .brand{font-size:0;gap:0}
+  .brand img{width:28px;height:28px}
+  .menu-btn{padding:0 10px}
+  .search{min-width:90px}
+  #theme{min-width:52px}
+}
+@media(max-width:520px){.search input{padding-right:10px}}

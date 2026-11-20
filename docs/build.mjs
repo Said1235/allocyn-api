@@ -153,6 +153,12 @@ function frontMatter(raw) {
 }
 const plain = (html) => html.replace(/<pre[\s\S]*?<\/pre>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
 
+/** Gives every cell the text of its column header, so the CSS can show a row as a labelled card on a phone. */
+const labelTables = (html) => html.replace(/<table>[\s\S]*?<\/table>/g, (t) => {
+  const heads = [...t.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => plain(m[1]));
+  return t.replace(/<tr>[\s\S]*?<\/tr>/g, (tr) => { let i = 0; return tr.replace(/<td>/g, () => `<td data-label="${esc(heads[i++] ?? "")}">`); });
+});
+
 /* ------------------------- API reference generation ------------------------ */
 async function simulatedExamples() {
   const A = "0x" + "a1".repeat(20), B = "0x" + "b2".repeat(20);
@@ -191,6 +197,7 @@ function paramsTable(rows) {
 async function referenceHtml(spec) {
   const ex = await simulatedExamples();
   let html = `<div class="base"><label>API base URL for “Try it”<input id="base" type="url" value="${esc(BASE_URL)}" autocomplete="off" spellcheck="false"></label></div>`;
+  html += `<div class="bulk"><button type="button" class="icon" data-expand="all">Expand all</button><button type="button" class="icon" data-expand="none">Collapse all</button></div>`;
   html += `<p>The “Try it” forms send a real request from your browser to the base URL above. They only work while that API is running and allows this page's origin in <code>CORS_ORIGINS</code> (the docs served by the API itself are same-origin).</p>`;
   html += `<p class="sim">Example responses below were produced by running the real server code against the <strong>in-memory test double of the contract</strong> when these docs were built. They show the exact shapes; the values are not from the network.</p>`;
   const byTag = {};
@@ -206,7 +213,7 @@ async function referenceHtml(spec) {
         : p.schema.enum ? `<label>${esc(p.name)}<select data-q="${esc(p.name)}"><option value="">(default)</option>${p.schema.enum.map((v) => `<option>${esc(v)}</option>`).join("")}</select></label>`
         : `<label>${esc(p.name)}<input data-q="${esc(p.name)}" placeholder="${esc(String(p.example ?? ""))}" size="${p.name === "limit" ? 5 : 14}" autocomplete="off" spellcheck="false"></label>`).join("");
       const curl = `curl -s '${BASE_URL}${e.url}'`;
-      html += `<section class="ep" id="${esc(r.operationId)}"><header><span class="m">GET</span><span class="p">${esc(r.path)}</span></header><div class="body">
+      html += `<details class="ep" id="${esc(r.operationId)}" open><summary><span class="m">GET</span><span class="p">${esc(r.path)}</span><span class="sum">${esc(r.summary)}</span></summary><div class="body">
         <p><strong>${esc(r.summary)}.</strong> ${esc(r.description).replace(/`([^`]+)`/g, "<code>$1</code>")}</p>
         ${params.length ? "<h4>Parameters</h4>" + paramsTable(params) : ""}
         <h4>Responses</h4>
@@ -216,7 +223,7 @@ async function referenceHtml(spec) {
         <h4>Try it</h4>
         <form class="try" data-path="${esc(r.path)}">${inputs}<button type="submit">Send request</button></form>
         <div class="out" hidden>${codeBlock("", "response")}</div>
-      </div></section>`;
+      </div></details>`;
     }
   }
   html += `<h3 id="error-example">Error example<a class="anchor" href="#error-example" aria-label="Link to this section">#</a></h3>${codeBlock(`GET /v1/jobs/job-99  →  HTTP ${ex.__notfound.status}\n` + JSON.stringify(ex.__notfound.body, null, 2), "json")}`;
@@ -262,12 +269,15 @@ for (const p of pages) {
     html += await referenceHtml(spec);
     env.toc.push(...[...new Set(routes.ROUTES.map((r) => r.tag))].map((t) => ({ level: "h3", id: slugify(t), text: t })));
   }
-  rendered.push({ p, html, env });
+  rendered.push({ p, html: labelTables(html), env });
 }
 
 const pageHtml = ({ p, html, env }, i) => {
   const prev = rendered[i - 1]?.p, next = rendered[i + 1]?.p;
-  const nav = groups.map((g) => `<h2>${esc(g)}</h2>` + pages.filter((x) => x.group === g).map((x) => `<a href="${x.slug}.html"${x.slug === p.slug ? ' aria-current="page"' : ""}>${esc(x.title)}</a>`).join("")).join("");
+  const nav = `<div class="sf"><input id="sf" type="search" placeholder="Filter documentation" aria-label="Filter documentation" autocomplete="off"></div>` + groups.map((g) => {
+    const items = pages.filter((x) => x.group === g);
+    return `<details class="grp" data-g="${esc(slugify(g))}"${items.some((x) => x.slug === p.slug) ? " open" : ""}><summary>${esc(g)}</summary><div class="items">${items.map((x) => `<a href="${x.slug}.html"${x.slug === p.slug ? ' aria-current="page"' : ""}>${esc(x.title)}</a>`).join("")}</div></details>`;
+  }).join("") + `<p class="sf-none" hidden>No page matches.</p>`;
   const toc = env.toc.map((t) => `<a class="${t.level}" href="#${t.id}">${esc(t.text)}</a>`).join("");
   return `<!doctype html>
 <html lang="en" data-theme="dark" data-root="./">
@@ -279,7 +289,7 @@ const pageHtml = ({ p, html, env }, i) => {
 <body><a class="skip" href="#main">Skip to content</a>
 <header class="top"><button class="icon menu-btn" id="menu" aria-expanded="false" aria-controls="side">Menu</button>
 <a class="brand" href="index.html" title="Back to the landing page"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><span class="ver" title="Documentation version">${VERSION}</span><a class="home" href="index.html" title="Back to the landing page"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 9.2L10 3l7 6.2V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>Landing page</span></a><span class="spacer"></span>
-<div class="search"><input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off"><kbd>/</kbd><div id="results" class="results" role="listbox"></div></div>
+<div class="search"><input id="q" type="search" placeholder="Search" aria-label="Search the docs" autocomplete="off"><kbd>/</kbd><div id="results" class="results" role="listbox"></div></div>
 <button class="icon" id="theme" type="button"></button></header>
 <div class="layout"><nav class="side" id="side" aria-label="Documentation">${nav}</nav>
 <main id="main"><article>${html}

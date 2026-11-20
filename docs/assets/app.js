@@ -15,6 +15,32 @@
   var side = document.getElementById("side"), mb = document.getElementById("menu");
   if (mb && side) mb.addEventListener("click", function () { var o = side.classList.toggle("open"); mb.setAttribute("aria-expanded", String(o)); });
 
+  // sidebar groups: remember which are open, and filter the page list
+  var grps = Array.prototype.slice.call(document.querySelectorAll("nav.side details.grp"));
+  var open = {}; try { open = JSON.parse(store.get("allocyn.docs.groups") || "{}"); } catch (e) {}
+  grps.forEach(function (g) {
+    var k = g.getAttribute("data-g");
+    if (!g.hasAttribute("open") && open[k] === true) g.setAttribute("open", "");
+    g.addEventListener("toggle", function () { open[k] = g.open; store.set("allocyn.docs.groups", JSON.stringify(open)); });
+  });
+  var sf = document.getElementById("sf"), none = document.querySelector(".sf-none");
+  if (sf) sf.addEventListener("input", function () {
+    var t = sf.value.trim().toLowerCase(), shown = 0;
+    grps.forEach(function (g) {
+      var any = false;
+      g.querySelectorAll("a").forEach(function (a) { var m = !t || a.textContent.toLowerCase().indexOf(t) >= 0; a.hidden = !m; if (m) any = true; });
+      g.hidden = !any; if (any) { shown++; if (t) g.open = true; }
+    });
+    if (none) none.hidden = shown > 0;
+  });
+
+  // endpoints: expand or collapse all, and open the one a link points at
+  document.querySelectorAll("[data-expand]").forEach(function (b) {
+    b.addEventListener("click", function () { var all = b.getAttribute("data-expand") === "all"; document.querySelectorAll("details.ep").forEach(function (d) { d.open = all; }); });
+  });
+  function openTarget() { var el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1))); if (el && el.tagName === "DETAILS") { el.open = true; el.scrollIntoView(); } }
+  window.addEventListener("hashchange", openTarget); openTarget();
+
   // diagrams: reveal when scrolled into view
   var figs = Array.prototype.slice.call(document.querySelectorAll(".diagram"));
   if (figs.length) {
