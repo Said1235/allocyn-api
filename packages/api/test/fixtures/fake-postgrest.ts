@@ -16,6 +16,8 @@ export interface FakeDb {
   log: Array<{ method: string; target: string; apikey: string | undefined; authorization: string | undefined; ua: string | undefined; body: any }>;
   /** Job ids the "database" refuses with a 400, as a check constraint would. */
   rejectIds: Set<string>;
+  /** True: behave like the public role (the private column of indexer_state is refused). */
+  publicRole: boolean;
   /** When set, every request answers with this status (a downed or locked database). */
   forceStatus: number | null;
   close(): Promise<void>;
@@ -26,7 +28,7 @@ const STATUS = new Set(["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "IN
 
 export async function startFakePostgrest(key = "sb_secret_test_key_123"): Promise<FakeDb> {
   const db: FakeDb = {
-    url: "", key, jobs: new Map(), receipts: new Map(), log: [], rejectIds: new Set(), forceStatus: null,
+    url: "", key, jobs: new Map(), receipts: new Map(), log: [], rejectIds: new Set(), forceStatus: null, publicRole: false,
     state: { last_job_number: 0, last_run_at: null, last_error: null, contract_address: null, network: null },
     close: async () => {},
   };
@@ -49,8 +51,27 @@ export async function startFakePostgrest(key = "sb_secret_test_key_123"): Promis
       const table = u.pathname.replace("/rest/v1/", "");
 
       if (table === "indexer_state") {
-        if (req.method === "GET") return send(res, 200, [{ last_job_number: db.state.last_job_number, contract_address: db.state.contract_address }]);
+        if (req.method === "GET") {
+          // The public role may read only these columns (the real table grants exactly them); last_error stays private.
+          const asked = (u.searchParams.get("select") ?? "").split(",");
+          if (asked.includes("last_error") && db.publicRole) return send(res, 403, { code: "42501", message: "permission denied for table indexer_state" });
+          return send(res, 200, [{ last_job_number: db.state.last_job_number, last_run_at: db.state.last_run_at, contract_address: db.state.contract_address, network: db.state.network }]);
+        }
         if (req.method === "PATCH") { Object.assign(db.state, body); return send(res, 204); }
+      }
+      if ((table === "jobs" || table === "receipts") && req.method === "HEAD") {
+        // select=id plus PostgREST filters (col=eq.value, col=is.null). Answers with the exact count in Content-Range.
+        const rows = [...(table === "jobs" ? db.jobs : db.receipts).values()].filter((r) => {
+          for (const [col, f] of u.searchParams) {
+            if (["select", "order", "limit"].includes(col)) continue;
+            if (f.startsWith("eq.")) { if (String(r[col]) !== f.slice(3)) return false; }
+            else if (f === "is.null") { if (r[col] !== null && r[col] !== undefined) return false; }
+            else return false;
+          }
+          return true;
+        });
+        res.writeHead(200, { "Content-Range": rows.length ? `0-${rows.length - 1}/${rows.length}` : "*/0" });
+        return res.end();
       }
       if (table === "jobs" && req.method === "GET") {
         const lim = Number(u.searchParams.get("limit") ?? 1000);

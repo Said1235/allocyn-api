@@ -10,6 +10,8 @@ import { matchRoute } from "./routes.ts";
 import type { Ctx } from "./routes.ts";
 import { buildOpenApi } from "./openapi.ts";
 import { makeCtx } from "./context.ts";
+import { createCopyReader } from "./copy.ts";
+import type { CopyReader } from "./copy.ts";
 import { parseQuery } from "./params.ts";
 import { renderVerifyPage, renderVerifyError, VERIFY_CSP } from "./verify-page.ts";
 import { createMcpHandler } from "./mcp.ts";
@@ -23,6 +25,8 @@ export interface ServerDeps {
   now?: () => number;
   /** Test seam: how often a long poll re-reads the contract (ms). */
   waitPollMs?: number;
+  /** The database copy reader. When omitted it is built from `config.copy`; pass null to force none. */
+  copy?: CopyReader | null;
   /** Test seam for the shared rate-limit store. */
   fetch?: typeof fetch;
   log?: (line: Record<string, unknown>) => void;
@@ -81,8 +85,9 @@ export function createApiHandler(deps: ServerDeps): (req: http.IncomingMessage, 
     return req.socket.remoteAddress ?? "unknown";
   };
 
+  const copy: CopyReader | null = deps.copy !== undefined ? deps.copy : config.copy ? createCopyReader({ url: config.copy.url, key: config.copy.publishableKey }) : null;
   const ctxFor = (params: Record<string, string>, query: URLSearchParams): Ctx =>
-    makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...(deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}), appUrl: config.appUrl }, params, query);
+    makeCtx({ clients: deps.clients, copy, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...(deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}), appUrl: config.appUrl }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
 
   return async (req, res) => {

@@ -1718,6 +1718,70 @@ async function createAllocynClient(options = {}) {
   return new AllocynClient({ network, contractAddress, gateway, actor, readConsistency, softLimits: soft, pending, repo, preflight, limitsTtlMs: options.limitsTtlMs ?? 6e4, now: options.now ?? Date.now });
 }
 
+// packages/api/src/copy.ts
+var CopyError = class extends Error {
+  status;
+  constructor(message, status) {
+    super(message);
+    this.name = "CopyError";
+    this.status = status;
+  }
+};
+function assertPublicKey(key) {
+  if (/^sb_secret_/i.test(key)) throw new CopyError("That is a Supabase secret key. The API only accepts the public (publishable) key.");
+  if (key.startsWith("eyJ")) {
+    try {
+      const payload = JSON.parse(Buffer.from(key.split(".")[1] ?? "", "base64url").toString("utf8"));
+      if (payload && payload.role === "service_role") throw new CopyError("That is a service_role key. The API only accepts the public (publishable or anon) key.");
+    } catch (e) {
+      if (e instanceof CopyError) throw e;
+    }
+  }
+}
+function createCopyReader(o) {
+  let base;
+  try {
+    base = new URL(o.url);
+  } catch {
+    throw new CopyError("The database URL must be an absolute URL.");
+  }
+  const local = base.hostname === "localhost" || base.hostname === "127.0.0.1";
+  if (base.protocol !== "https:" && !local) throw new CopyError("The database URL must use https.");
+  if (!o.key) throw new CopyError("A public key is required.");
+  assertPublicKey(o.key);
+  const f = o.fetch ?? fetch;
+  async function call(method, pathAndQuery, count = false) {
+    let res;
+    try {
+      res = await f(`${base.origin}/rest/v1/${pathAndQuery}`, {
+        method,
+        headers: { apikey: o.key, "User-Agent": "allocyn-api/1", Accept: "application/json", ...count ? { Prefer: "count=exact" } : {} },
+        signal: AbortSignal.timeout(o.timeoutMs ?? 6e3)
+      });
+    } catch (e) {
+      throw new CopyError(`Could not reach the database copy: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (!res.ok) throw new CopyError(`The database copy answered ${res.status}.`, res.status);
+    return res;
+  }
+  return {
+    async status() {
+      const res = await call("GET", "indexer_state?id=eq.1&select=last_job_number,last_run_at,contract_address,network");
+      const rows = await res.json();
+      const r = rows[0];
+      if (!r) return null;
+      return { lastJobNumber: r.last_job_number, lastRunAt: r.last_run_at, contract: r.contract_address, network: r.network };
+    },
+    async count(table, filters) {
+      const q = new URLSearchParams({ select: "id", ...filters });
+      const res = await call("HEAD", `${table}?${q.toString()}`, true);
+      const m = /\/(\d+)$/.exec(res.headers.get("content-range") ?? "");
+      if (!m) throw new CopyError("The database copy did not return a row count.");
+      return Number(m[1]);
+    }
+  };
+}
+
 // packages/api/src/config.ts
 var ConfigError = class extends Error {
   constructor(message) {
@@ -1736,6 +1800,9 @@ function loadConfig(env = process.env) {
   for (const k of Object.keys(env)) {
     if (/^(PRIVATE_KEY|SEED|MNEMONIC|WALLET_KEY|SECRET_KEY)/i.test(k) && env[k]) {
       throw new ConfigError(`${k} is set. The Allocyn API never uses private keys or seed phrases; remove it from the environment.`);
+    }
+    if (/^SUPABASE_(SECRET_KEY|SERVICE_ROLE_KEY)$/.test(k) && env[k]) {
+      throw new ConfigError(`${k} is set. The API only reads the database copy with the public key (SUPABASE_PUBLISHABLE_KEY). The secret key belongs to the indexer and nowhere else; remove it from the environment.`);
     }
   }
   const nodeEnv = env.NODE_ENV ?? "development";
@@ -1767,6 +1834,25 @@ function loadConfig(env = process.env) {
     if (u.protocol !== "https:" && !(nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) throw new ConfigError("APP_URL must use https.");
     appUrl = u.origin + u.pathname.replace(/\/+$/, "");
   }
+  let copy = null;
+  const dbUrl = env.SUPABASE_URL?.trim() || "";
+  const dbKey = env.SUPABASE_PUBLISHABLE_KEY?.trim() || "";
+  if (!!dbUrl !== !!dbKey) throw new ConfigError("Set both SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, or neither.");
+  if (dbUrl) {
+    let u;
+    try {
+      u = new URL(dbUrl);
+    } catch {
+      throw new ConfigError("SUPABASE_URL must be an absolute URL.");
+    }
+    if (u.protocol !== "https:" && !(nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) throw new ConfigError("SUPABASE_URL must use https.");
+    try {
+      assertPublicKey(dbKey);
+    } catch (e) {
+      throw new ConfigError(`SUPABASE_PUBLISHABLE_KEY: ${e instanceof CopyError ? e.message : "not valid."}`);
+    }
+    copy = { url: u.origin, publishableKey: dbKey };
+  }
   const rawCors = env.CORS_ORIGINS?.trim();
   let corsOrigins;
   if (rawCors === void 0 || rawCors === "") corsOrigins = nodeEnv === "production" ? [] : ["*"];
@@ -1795,6 +1881,7 @@ function loadConfig(env = process.env) {
     contractAddress: addr2,
     apiBaseUrl,
     appUrl,
+    copy,
     corsOrigins,
     port,
     host: env.HOST?.trim() || "0.0.0.0",
@@ -2201,6 +2288,66 @@ async function prepareAction(ctx, consistency) {
   };
 }
 
+// packages/api/src/stats.ts
+var JOB_STATUSES2 = ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"];
+var OUTCOMES = ["VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"];
+var TTL_MS = 3e4;
+var STATS_QUERY = [
+  { name: "client", description: "Count only the jobs created by this address. Deliveries are then not counted.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "a1".repeat(20) },
+  { name: "worker", description: "Count only the jobs accepted by this address, and the deliveries made by it.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
+];
+var cache = /* @__PURE__ */ new WeakMap();
+async function getStats(ctx) {
+  const copy = ctx.copy;
+  if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it cannot give statistics.", { retryable: false });
+  const q = ctx.query;
+  const client = q.get("client")?.toLowerCase() ?? null;
+  const worker = q.get("worker")?.toLowerCase() ?? null;
+  const key = `${client ?? ""}|${worker ?? ""}`;
+  const now = ctx.now().getTime();
+  const store = cache.get(copy) ?? /* @__PURE__ */ new Map();
+  cache.set(copy, store);
+  const hit = store.get(key);
+  if (hit && now - hit.at < TTL_MS) return hit.data;
+  const jobFilter = { ...client ? { client: `eq.${client}` } : {}, ...worker ? { worker: `eq.${worker}` } : {} };
+  const receiptFilter = worker ? { worker: `eq.${worker}` } : {};
+  try {
+    const [status, jobTotal, jobCounts, receipts] = await Promise.all([
+      copy.status(),
+      copy.count("jobs", jobFilter),
+      Promise.all(JOB_STATUSES2.map((s) => copy.count("jobs", { ...jobFilter, status: `eq.${s}` }))),
+      client ? Promise.resolve(null) : Promise.all([
+        copy.count("receipts", receiptFilter),
+        ...OUTCOMES.map((o) => copy.count("receipts", { ...receiptFilter, overall_status: `eq.${o}` })),
+        copy.count("receipts", { ...receiptFilter, status: "eq.PENDING" })
+      ])
+    ]);
+    const data = {
+      source: "copy",
+      contract: status?.contract ?? null,
+      network: status?.network ?? null,
+      syncedAt: status?.lastRunAt ? new Date(status.lastRunAt).toISOString() : null,
+      copiedThrough: status && status.lastJobNumber > 0 ? `job-${status.lastJobNumber}` : null,
+      filter: { client, worker },
+      jobs: { total: jobTotal, byStatus: Object.fromEntries(JOB_STATUSES2.map((s, i) => [s, jobCounts[i]])) },
+      receipts: receipts && {
+        total: receipts[0],
+        byOutcome: { VERIFIED: receipts[1], NEEDS_REVISION: receipts[2], INCONCLUSIVE: receipts[3], PENDING: receipts[4] }
+      },
+      notes: [
+        "These counts come from a copy of the contract's final reads, refreshed by an indexer. Check `syncedAt`: jobs created since then are not counted yet.",
+        "`byOutcome` counts deliveries by the verdict the validators gave. `PENDING` are waiting to be judged. A delivery replaced before it was judged is only in `total`.",
+        "To rely on one job, read that job: this is a summary, not proof."
+      ]
+    };
+    store.set(key, { at: now, data });
+    return data;
+  } catch (e) {
+    if (e instanceof CopyError) throw new ApiError(502, "UPSTREAM_UNAVAILABLE", "The database copy did not answer. Try again later.", { retryable: true });
+    throw e;
+  }
+}
+
 // packages/api/src/routes.ts
 var jobId = { name: "jobId", description: 'Job id, e.g. "job-1". Ids are assigned by the contract: never invent one.', schema: { type: "string", pattern: "^job-[1-9][0-9]*$" }, example: "job-1" };
 var receiptId = { name: "receiptId", description: 'Receipt id, e.g. "rcpt-1".', schema: { type: "string", pattern: "^rcpt-[1-9][0-9]*$" }, example: "rcpt-1" };
@@ -2275,6 +2422,21 @@ var ROUTES = [
     schemaRef: "JobList",
     errors: [400, 429, 502],
     handler: async (ctx, c) => listJobs(ctx, c)
+  },
+  {
+    method: "GET",
+    path: "/v1/stats",
+    operationId: "getStats",
+    tag: "Jobs",
+    summary: "Counts and statistics",
+    description: "How many jobs there are in each status, and how many deliveries got each verdict, optionally for one `client` or one `worker`. The contract has no count view, so these numbers come from an optional database copy that an indexer fills from final reads. The answer says when the copy was last refreshed (`syncedAt`). It answers `503 COPY_UNAVAILABLE` on a server that has no copy configured.",
+    pathParams: [],
+    query: STATS_QUERY,
+    chainRead: false,
+    cache: "short",
+    schemaRef: "Stats",
+    errors: [400, 429, 502, 503],
+    handler: async (ctx) => getStats(ctx)
   },
   {
     method: "GET",
@@ -2508,6 +2670,17 @@ var SCHEMAS = {
     next: { type: "string" },
     notes: { type: "array", items: { type: "string" } }
   }, ["jobId", "action", "status", "final", "canProceed", "reasons", "whoMaySign", "intent", "sdk", "appLink", "sent", "readAt", "next", "notes"]),
+  Stats: obj({
+    source: { type: "string", enum: ["copy"], description: "Counted in the database copy, not read from the contract." },
+    contract: { type: ["string", "null"] },
+    network: { type: ["string", "null"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran. Jobs created since are not counted." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    filter: obj({ client: { type: ["string", "null"] }, worker: { type: ["string", "null"] } }),
+    jobs: obj({ total: int3, byStatus: obj({ OPEN: int3, IN_PROGRESS: int3, VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3 }) }),
+    receipts: { oneOf: [obj({ total: int3, byOutcome: obj({ VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3, PENDING: int3 }) }), { type: "null" }], description: "Null when filtering by client." },
+    notes: { type: "array", items: str2 }
+  }),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -2548,14 +2721,14 @@ var SCHEMAS = {
     decided: { type: "boolean" },
     failureMessage: nstr
   }),
-  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "FORBIDDEN", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "INTERNAL"] }, message: str2, retryable: { type: "boolean" }, field: str2 }, ["code", "message", "retryable"]) })
+  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "FORBIDDEN", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "COPY_UNAVAILABLE", "INTERNAL"] }, message: str2, retryable: { type: "boolean" }, field: str2 }, ["code", "message", "retryable"]) })
 };
 var ERROR_TEXT = {
   400: "Invalid parameter.",
   404: "Not found.",
   429: "Rate limit exceeded. See Retry-After.",
   502: "The network or contract answered badly or not at all.",
-  503: "The network did not answer.",
+  503: "The network did not answer, or the optional database copy is not configured.",
   504: "The network took too long to answer."
 };
 function buildOpenApi(cfg) {
@@ -2581,7 +2754,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.3.0",
+      version: "1.4.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2608,7 +2781,8 @@ function makeCtx(deps, params, query) {
     now: () => new Date(deps.now()),
     timeoutMs: deps.timeoutMs,
     pollMs: deps.pollMs ?? 1500,
-    appUrl: deps.appUrl ?? null
+    appUrl: deps.appUrl ?? null,
+    copy: deps.copy ?? null
   };
 }
 
@@ -2692,7 +2866,7 @@ function renderVerifyError(status, message) {
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.3.0";
+var MCP_SERVER_VERSION = "1.4.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {
@@ -2857,7 +3031,8 @@ function createApiHandler(deps) {
     }
     return req.socket.remoteAddress ?? "unknown";
   };
-  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}, appUrl: config.appUrl }, params, query);
+  const copy = deps.copy !== void 0 ? deps.copy : config.copy ? createCopyReader({ url: config.copy.url, key: config.copy.publishableKey }) : null;
+  const ctxFor = (params, query) => makeCtx({ clients: deps.clients, copy, defaultConsistency: config.readConsistency, now, timeoutMs: config.requestTimeoutMs, ...deps.waitPollMs ? { pollMs: deps.waitPollMs } : {}, appUrl: config.appUrl }, params, query);
   const mcp = createMcpHandler({ makeCtx: ctxFor, defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs });
   return async (req, res) => {
     const id = randomUUID();

@@ -1,6 +1,7 @@
 import { createAllocynClient } from "@allocyn/sdk";
 import { ConfigError, loadConfig } from "./config.ts";
 import { makeCtx } from "./context.ts";
+import { createCopyReader } from "./copy.ts";
 import { createMcpHandler } from "./mcp.ts";
 import { serveStdio } from "./stdio.ts";
 
@@ -20,8 +21,9 @@ async function main() {
     createAllocynClient({ ...base, readConsistency: "latest" }),
     createAllocynClient({ ...base, readConsistency: "final" }),
   ]);
+  const copy = config.copy ? createCopyReader({ url: config.copy.url, key: config.copy.publishableKey }) : null;
   const mcp = createMcpHandler({
-    makeCtx: (params, query) => makeCtx({ clients: { latest, final }, defaultConsistency: config.readConsistency, now: Date.now, timeoutMs: config.requestTimeoutMs, appUrl: config.appUrl }, params, query),
+    makeCtx: (params, query) => makeCtx({ clients: { latest, final }, copy, defaultConsistency: config.readConsistency, now: Date.now, timeoutMs: config.requestTimeoutMs, appUrl: config.appUrl }, params, query),
     defaultConsistency: config.readConsistency, timeoutMs: config.requestTimeoutMs,
   });
   console.error(JSON.stringify({ level: "info", msg: "allocyn-mcp ready (stdio)", network: config.network, contract: latest.contractAddress }));

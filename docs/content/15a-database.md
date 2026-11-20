@@ -23,11 +23,11 @@ The contract has no list or count view, so `GET /v1/jobs` finds the newest job b
 </div>
 <div class="card">
 
-<span class="badge warn">Not in the API yet</span>
+<span class="badge ok">Ready</span>
 
 ### Counts and statistics
 
-How many jobs are open, how many were verified, how many deliveries each worker made. None of that can be read from the contract without scanning it. In a table it is one `group by`.
+How many jobs are open, how many were verified, how many deliveries each worker made. None of that can be read from the contract without scanning it. `GET /v1/stats` answers it from the copy, for everyone or for one client or worker, and says when the copy was last refreshed.
 
 </div>
 <div class="card">
@@ -58,7 +58,8 @@ Row level security is on for every table. The public key can read jobs and recei
 | Indexer (`npm run index`) | Written and tested against the simulated contract and a stand-in for the Supabase REST API that enforces the same table rules. |
 | Scheduled run (`.github/workflows/index.yml`) | Runs once an hour, and by hand from the Actions tab. It does nothing until the two secrets exist. |
 | First run on the real project | It recorded which contract and network the database mirrors and found **no jobs**, because the contract had none yet. Copying real jobs into the hosted database has **not** been seen. |
-| API endpoints that read the copy | **None yet.** Lists and counts in the API still come from the contract. |
+| `GET /v1/stats` and the MCP tool `get_stats` | Built. Tested against a stand-in for the Supabase REST API (row counts, filters, key header) and against the simulated contract. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; a request with the real public key to the hosted endpoint has **not** been tried. |
+| Lists from the copy | **Not built.** `GET /v1/jobs` still reads the contract. |
 
 ## How it works
 
@@ -79,7 +80,8 @@ What it does when something goes wrong:
 |---|---|---|
 | `jobs` | `id` (`job-N`), `job_number`, `title`, `description`, `criteria` (JSON), `client`, `worker` (null until accepted), `status`, `delivery_count`, `receipt_ids`, `terms_hash`, `agreement_hash`, `integrity` (JSON), `synced_at` | Anyone with the public key |
 | `receipts` | `id` (`rcpt-N`), `job_id`, `delivery_index`, `worker`, `url`, `status`, `agreement_hash`, `evidence_hash`, `evidence_size`, `overall_status`, `evaluation_requested_by`, `results` (JSON), `synced_at` | Anyone with the public key |
-| `indexer_state` | The position, the last run, the last error, the contract address and the network | Only the secret key |
+| `indexer_state` | The position, the last run, the contract address and the network | Anyone with the public key |
+| `indexer_state` (`last_error`) | The last error, which can name rows and database messages | Only the secret key |
 
 The fields match the [REST shapes](rest-reference.html) one to one, in snake case. Addresses are stored in lower case. Every row has `synced_at`: when the indexer last wrote it.
 
@@ -87,7 +89,7 @@ The fields match the [REST shapes](rest-reference.html) one to one, in snake cas
 
 | Key | Can | Where it lives |
 |---|---|---|
-| **Public** (publishable) key | Read `jobs` and `receipts`. Nothing else: no writes, no `indexer_state`. | Anywhere. It carries the same low privileges as the old `anon` key. |
+| **Public** (publishable) key | Read `jobs`, `receipts` and the public columns of `indexer_state`. Nothing else: no writes, no `last_error`. | Anywhere. It carries the same low privileges as the old `anon` key. |
 | **Secret** key | Everything, and it bypasses row level security. | Only in the repository's Actions secrets. Never in the code, the chat, the API function or a browser. |
 
 Supabase secret keys are not JWTs, so the indexer sends them in the `apikey` header only. Putting one in `Authorization: Bearer` makes the platform reject it with `Invalid JWT`.
@@ -99,6 +101,7 @@ Supabase secret keys are not JWTs, so the indexer sends them in the `apikey` hea
    - `…0001_lock_rls_auto_enable.sql`: that project option installs a helper function anyone could call through the API; this removes that permission.
    - `…0002_jobs_receipts.sql`: the three tables, their indexes, row level security and the read-only grants.
    - `…0003_indexer_contract.sql`: the columns that record the contract and the network.
+   - `…0004_public_index_status.sql`: lets the public key read the position, the time of the last run, the contract and the network (and no more), which `/v1/stats` reports.
 3. **Create a secret key:** *Project Settings, API Keys, Secret keys*. A key of its own for this use is better than sharing one, because it can be revoked alone.
 4. **Add two secrets to the GitHub repository.** *Settings, Secrets and variables, Actions, Repository secrets* (not *Environment secrets*):
    - `SUPABASE_URL`: the project URL, `https://<ref>.supabase.co`
@@ -111,6 +114,36 @@ from public.indexer_state;
 ```
 
 To run it from your own machine instead: `SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run index`.
+
+6. **Turn on the statistics endpoint.** In the Vercel project's *Environment Variables*, add `SUPABASE_URL` (the same URL) and `SUPABASE_PUBLISHABLE_KEY` (*Project Settings, API Keys, Publishable key*), then redeploy. This one is the **public** key. The API refuses to start if it finds a secret key, a `service_role` key, or the variables `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Statistics through the API
+
+`GET /v1/stats` counts in the copy and returns one object. The values below are illustrative.
+
+```json
+{
+  "success": true,
+  "data": {
+    "source": "copy",
+    "contract": "0x5729a3b514654Ec5966A1DCa8e5088ef7A70bBDA",
+    "network": "studionet",
+    "syncedAt": "2026-11-19T10:00:00.000Z",
+    "copiedThrough": "job-5",
+    "filter": { "client": null, "worker": null },
+    "jobs": { "total": 5, "byStatus": { "OPEN": 1, "IN_PROGRESS": 1, "VERIFIED": 2, "NEEDS_REVISION": 1, "INCONCLUSIVE": 0 } },
+    "receipts": { "total": 6, "byOutcome": { "VERIFIED": 2, "NEEDS_REVISION": 2, "INCONCLUSIVE": 0, "PENDING": 1 } },
+    "notes": ["..."]
+  }
+}
+```
+
+| Parameter | Effect |
+|---|---|
+| `worker` | Counts only the jobs this address accepted, and the deliveries it made. |
+| `client` | Counts only the jobs this address created. Deliveries are then `null`: they belong to the worker. |
+
+`syncedAt` is when the indexer last ran: jobs created since are not counted yet. `byOutcome` counts deliveries by the verdict the validators gave; `PENDING` are still waiting, and a delivery replaced before it was judged is only in `total`. Answers are cached for 30 seconds. On a server with no copy configured the answer is `503 COPY_UNAVAILABLE`.
 
 ## Query it
 
@@ -152,4 +185,4 @@ curl "https://<ref>.supabase.co/rest/v1/jobs?status=eq.OPEN&order=job_number.des
 
 ## Next
 
-The step that makes this useful to API callers is for `GET /v1/jobs` and a new statistics endpoint to read the copy, with the contract as a fallback and the freshness of each answer shown in the response. That is not built. See the [changelog](changelog.html) for what is done and what is not.
+The next step is for `GET /v1/jobs` to read the copy as well, with the contract as a fallback and the freshness of each answer shown in the response. That is not built. See the [changelog](changelog.html) for what is done and what is not.

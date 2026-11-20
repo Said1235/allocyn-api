@@ -5,6 +5,8 @@ import { buildBadge } from "./badge.ts";
 import { listJobs, LIST_QUERY } from "./jobs-list.ts";
 import { waitForJob, WAIT_QUERY } from "./wait.ts";
 import { prepareAction, PREPARE_QUERY } from "./prepare.ts";
+import { getStats, STATS_QUERY } from "./stats.ts";
+import type { CopyReader } from "./copy.ts";
 import type { QueryParam } from "./params.ts";
 
 /**
@@ -26,6 +28,8 @@ export interface Ctx {
   pollMs: number;
   /** Where the Allocyn web app lives, for links in prepared actions. Null when not configured. */
   appUrl: string | null;
+  /** The optional database copy (public key, read only). Null when this server has none. */
+  copy: CopyReader | null;
 }
 export interface Route {
   method: "GET";
@@ -90,6 +94,12 @@ export const ROUTES: Route[] = [
     description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped.",
     pathParams: [], query: LIST_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobList", errors: [400, 429, 502],
     handler: async (ctx, c) => listJobs(ctx, c),
+  },
+  {
+    method: "GET", path: "/v1/stats", operationId: "getStats", tag: "Jobs", summary: "Counts and statistics",
+    description: "How many jobs there are in each status, and how many deliveries got each verdict, optionally for one `client` or one `worker`. The contract has no count view, so these numbers come from an optional database copy that an indexer fills from final reads. The answer says when the copy was last refreshed (`syncedAt`). It answers `503 COPY_UNAVAILABLE` on a server that has no copy configured.",
+    pathParams: [], query: STATS_QUERY, chainRead: false, cache: "short", schemaRef: "Stats", errors: [400, 429, 502, 503],
+    handler: async (ctx) => getStats(ctx),
   },
   {
     method: "GET", path: "/v1/jobs/{jobId}", operationId: "getJob", tag: "Jobs", summary: "Read a job",

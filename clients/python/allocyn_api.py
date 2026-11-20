@@ -84,6 +84,10 @@ class AllocynApi:
         """List jobs. Jobs from newest to oldest, with an optional filter by status, client or worker."""
         return self._get(f"/v1/jobs", {"consistency": consistency, "limit": limit, "before": before, "status": status, "client": client, "worker": worker})
 
+    def get_stats(self, *, client: Optional[str] = None, worker: Optional[str] = None) -> Any:
+        """Counts and statistics. How many jobs there are in each status, and how many deliveries got each verdict, optionally for one client or one worker."""
+        return self._get(f"/v1/stats", {"client": client, "worker": worker})
+
     def get_job(self, job_id: str, *, consistency: Optional[str] = None) -> Any:
         """Read a job. The job's terms, parties, status and receipt ids, read from the contract."""
         return self._get(f"/v1/jobs/{_q(job_id)}", {"consistency": consistency})

@@ -7,7 +7,7 @@ description: Read Allocyn work agreements, delivery receipts and transaction sta
 
 Allocyn is a contract on GenLayer Studionet. A client writes a job with 1 to 20 written criteria, a worker delivers a public link, and validators read that page and judge each criterion. The Allocyn API exposes that data **read-only**. This skill is about reading it correctly.
 
-Generated from API 1.3.0. Full endpoint list: [references/api.md](references/api.md).
+Generated from API 1.4.0. Full endpoint list: [references/api.md](references/api.md).
 
 ## Pick how to read
 
@@ -71,6 +71,7 @@ Accepting, delivering and evaluating are writes, and you never perform them. `pr
 | `get_meta` | Network, contract and API facts (`GET /v1/meta`) |
 | `get_limits` | Input limits (`GET /v1/limits`) |
 | `list_jobs` | List jobs (`GET /v1/jobs`) |
+| `get_stats` | Counts and statistics (`GET /v1/stats`) |
 | `get_job` | Read a job (`GET /v1/jobs/{jobId}`) |
 | `get_job_proof` | Proof summary of a job (`GET /v1/jobs/{jobId}/proof`) |
 | `wait_for_job` | Wait for a job to change (`GET /v1/jobs/{jobId}/wait`) |

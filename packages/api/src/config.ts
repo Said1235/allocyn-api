@@ -1,5 +1,6 @@
 import { NETWORKS, isNetworkName } from "@allocyn/sdk";
 import type { NetworkName } from "@allocyn/sdk";
+import { assertPublicKey, CopyError } from "./copy.ts";
 
 export interface ApiConfig {
   nodeEnv: "development" | "test" | "production";
@@ -8,6 +9,8 @@ export interface ApiConfig {
   apiBaseUrl: string;
   /** Where the Allocyn web app lives (https). Used only to build links in prepared actions. Optional. */
   appUrl: string | null;
+  /** Optional database copy (Supabase), read with the PUBLIC key only. Null = the stats endpoint answers 503. */
+  copy: { url: string; publishableKey: string } | null;
   corsOrigins: string[]; // exact origins, or ["*"]
   port: number;
   host: string;
@@ -41,6 +44,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (/^(PRIVATE_KEY|SEED|MNEMONIC|WALLET_KEY|SECRET_KEY)/i.test(k) && env[k]) {
       throw new ConfigError(`${k} is set. The Allocyn API never uses private keys or seed phrases; remove it from the environment.`);
     }
+    if (/^SUPABASE_(SECRET_KEY|SERVICE_ROLE_KEY)$/.test(k) && env[k]) {
+      throw new ConfigError(`${k} is set. The API only reads the database copy with the public key (SUPABASE_PUBLISHABLE_KEY). The secret key belongs to the indexer and nowhere else; remove it from the environment.`);
+    }
   }
   const nodeEnv = (env.NODE_ENV ?? "development") as ApiConfig["nodeEnv"];
   if (!["development", "test", "production"].includes(nodeEnv)) throw new ConfigError("NODE_ENV must be development, test or production.");
@@ -68,6 +74,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     appUrl = u.origin + u.pathname.replace(/\/+$/, "");
   }
 
+  let copy: ApiConfig["copy"] = null;
+  const dbUrl = env.SUPABASE_URL?.trim() || "";
+  const dbKey = env.SUPABASE_PUBLISHABLE_KEY?.trim() || "";
+  if (!!dbUrl !== !!dbKey) throw new ConfigError("Set both SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, or neither.");
+  if (dbUrl) {
+    let u: URL; try { u = new URL(dbUrl); } catch { throw new ConfigError("SUPABASE_URL must be an absolute URL."); }
+    if (u.protocol !== "https:" && !(nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) throw new ConfigError("SUPABASE_URL must use https.");
+    try { assertPublicKey(dbKey); } catch (e) { throw new ConfigError(`SUPABASE_PUBLISHABLE_KEY: ${e instanceof CopyError ? e.message : "not valid."}`); }
+    copy = { url: u.origin, publishableKey: dbKey };
+  }
+
   const rawCors = env.CORS_ORIGINS?.trim();
   let corsOrigins: string[];
   if (rawCors === undefined || rawCors === "") corsOrigins = nodeEnv === "production" ? [] : ["*"];
@@ -86,7 +103,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (storeUrl) { let u: URL; try { u = new URL(storeUrl); } catch { throw new ConfigError("UPSTASH_REDIS_REST_URL must be an absolute URL."); } if (u.protocol !== "https:") throw new ConfigError("UPSTASH_REDIS_REST_URL must use https."); }
 
   return {
-    nodeEnv, network, contractAddress: addr, apiBaseUrl, appUrl, corsOrigins, port,
+    nodeEnv, network, contractAddress: addr, apiBaseUrl, appUrl, copy, corsOrigins, port,
     host: env.HOST?.trim() || "0.0.0.0",
     rateLimit: { max: int("RATE_LIMIT_MAX", env.RATE_LIMIT_MAX, 60, 1, 100000), windowMs: int("RATE_LIMIT_WINDOW_MS", env.RATE_LIMIT_WINDOW_MS, 60000, 1000, 3600000) },
     rateLimitStore: storeUrl ? { url: storeUrl, token: storeToken } : null,

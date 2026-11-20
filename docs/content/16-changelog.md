@@ -5,25 +5,24 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.3.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.4.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
 
-## Unreleased: database copy and wallet notes
+## 1.4.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
 
-No route, shape or package version changed. The API still reads straight from the contract, and the API function does not use the database.
+The routes and shapes of 1.0.0 to 1.3.0 did not change. Everything below is added or fixed.
+
+**Added**
+- **`GET /v1/stats`** and the MCP tool **`get_stats`**: how many jobs are in each status and how many deliveries got each verdict, optionally for one `client` or one `worker`. The contract has no count view, so the numbers come from a database copy (see below). The answer says when the copy was last refreshed (`syncedAt`), which contract and network it mirrors, and how far it got (`copiedThrough`). On a server with no copy it answers `503 COPY_UNAVAILABLE`. Answers are cached for 30 seconds. See [Database copy](database.html).
+- **An optional database copy on Supabase**, filled by an indexer (`npm run index`, and a scheduled workflow about once an hour). It copies jobs and receipts using final reads only, re-reads the jobs that can still change, skips and reports any row the database refuses, and stops if the database belongs to another contract. Row level security is on everywhere: the public key can only read.
+- **Two optional settings for the API**: `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. The API reads the copy with the public key only, and refuses to start if it finds a secret key (`SUPABASE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, an `sb_secret_` key or a `service_role` key). The secret key belongs to the indexer and lives only in the repository's secrets.
+- **MetaMask** is the wallet used in the signing examples and is supported through the SDK's wallet connection. It moved out of the landing's technology cards. See [Wallets and signing](auth-wallets.html).
 
 **Fixed**
 - **Every `/v1/*` request failed on Vercel** with `Unknown query parameter "path"`. Vercel adds the matched part of the URL to the query string, and the API rejects parameters it does not know. The function now drops that platform parameter (and `jobId` on `/verify`, and the `_vercel_share` link parameter) before routing. The local tests did not go through Vercel's rewrites, so they could not catch it; the first request on the deployed API did.
-
 - **The docs header on phones.** The theme button was pushed off the screen and every page scrolled sideways. The "Landing page" pill now shows only its icon on small screens and the search box can shrink.
 
-**Added**
-- **A Postgres database on Supabase** for a copy of public job and receipt data. It has three tables (`jobs`, `receipts` and a private one that remembers where the indexer stopped and which contract it mirrors). Row level security is on everywhere: the public key can only read jobs and receipts, and only the indexer, with a secret key, can write.
-- **An indexer** (`npm run index`, and a scheduled workflow about once an hour). It copies jobs and receipts using final reads only, re-reads the jobs that can still change, skips and reports any row the database refuses, and stops if the database belongs to another contract. The secret key lives only in the repository's secrets. Setup, what it offers and what is not done are on [Database copy (Supabase)](database.html).
-- **MetaMask** is the wallet used in the signing examples and is supported through the SDK's wallet connection. It moved out of the landing's technology cards, which now show the parts that run on the server side. See [Wallets and signing](auth-wallets.html).
-
-**Not done yet**
-- No endpoint reads the copy yet, so lists and counts still come from the contract. The tables are empty until the indexer runs.
-- The indexer was tested against a stand-in for the Supabase REST API and the simulated contract. It has not run against the real project or Studionet, and the key header handling follows Supabase's documentation but was not tried against the hosted service.
+**Not verified yet**
+- The statistics were tested against a stand-in for the Supabase REST API (row counts, filters, the key header) and against the simulated contract. The public role's permissions were checked directly in the real database. A request with the real public key to the hosted endpoint has not been tried, and the real copy holds no jobs yet, because the contract had none when the indexer ran.
 - Signing with MetaMask has not been tried on the live network.
 
 ## 1.3.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)

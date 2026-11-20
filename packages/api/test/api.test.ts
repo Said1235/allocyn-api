@@ -13,6 +13,9 @@ import { validate } from "./schema.ts";
 import { canonicalJson } from "../src/proof.ts";
 import { renderBadge } from "../src/badge.ts";
 import { createHash } from "node:crypto";
+import { createCopyReader } from "../src/copy.ts";
+import { startFakePostgrest } from "./fixtures/fake-postgrest.ts";
+import type { FakeDb } from "./fixtures/fake-postgrest.ts";
 
 const ALICE = "0x" + "a1".repeat(20);
 const BOB = "0x" + "b2".repeat(20);
@@ -22,9 +25,10 @@ let clock = 1_000_000;
 
 const mkCfg = (over: Partial<ApiConfig> = {}): ApiConfig => ({ ...loadConfig({ NODE_ENV: "test", CORS_ORIGINS: "https://app.example" }), ...over });
 
+let fakeDb: FakeDb;
 async function start(c: ApiConfig, docs?: Parameters<typeof createApiServer>[0]["docs"]) {
   const mk = (readConsistency: "latest" | "final") => createAllocynClient({ gateway: sim, actor: null, readConsistency });
-  const s = createApiServer({ config: c, clients: { latest: await mk("latest"), final: await mk("final") }, now: () => clock, ...(docs ? { docs } : {}) });
+  const s = createApiServer({ config: c, clients: { latest: await mk("latest"), final: await mk("final") }, now: () => clock, ...(docs ? { docs } : {}), ...(fakeDb ? { copy: createCopyReader({ url: fakeDb.url, key: fakeDb.key }) } : {}) });
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   return { s, url: `http://127.0.0.1:${(s.address() as AddressInfo).port}` };
 }
@@ -40,15 +44,21 @@ before(async () => {
   await sim.directWrite(BOB, "submit_delivery", ["job-1", "https://example.com/logo-package"]);
   await sim.directWrite(BOB, "evaluate_delivery", ["rcpt-1"]);
   await sim.directWrite(ALICE, "create_job", ["Second", "An open job.", ["First check", "Second check"]]);
+  fakeDb = await startFakePostgrest("sb_publishable_test_key");
+  fakeDb.publicRole = true;
+  fakeDb.state.last_job_number = 2; fakeDb.state.last_run_at = "2026-11-19T10:00:00.000Z"; fakeDb.state.contract_address = sim.contractAddress ?? "0x" + "5".repeat(40); fakeDb.state.network = "studionet";
+  fakeDb.jobs.set("job-1", { id: "job-1", status: "VERIFIED", client: ALICE, worker: BOB });
+  fakeDb.jobs.set("job-2", { id: "job-2", status: "OPEN", client: ALICE, worker: null });
+  fakeDb.receipts.set("rcpt-1", { id: "rcpt-1", job_id: "job-1", worker: BOB, status: "EVALUATED", overall_status: "VERIFIED" });
   cfg = mkCfg();
   const st = await start(cfg); server = st.s; base = st.url;
   spec = buildOpenApi(cfg);
 });
-after(() => server.close());
+after(async () => { server.close(); await fakeDb?.close(); });
 
 const SAMPLE: Record<string, string> = {
   "/v1/health": "/v1/health", "/v1/meta": "/v1/meta", "/v1/limits": "/v1/limits",
-  "/v1/jobs": "/v1/jobs",
+  "/v1/jobs": "/v1/jobs", "/v1/stats": "/v1/stats",
   "/v1/jobs/{jobId}": "/v1/jobs/job-1",
   "/v1/jobs/{jobId}/proof": "/v1/jobs/job-1/proof",
   "/v1/jobs/{jobId}/wait": "/v1/jobs/job-1/wait",

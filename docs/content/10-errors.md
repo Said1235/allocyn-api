@@ -32,6 +32,7 @@ These classes appear on **writes** (`TRANSACTION_FAILED`). Reads never fail this
 | `TRANSACTION_NOT_CONFIRMED` | Consensus decided but the expected change is not visible on the contract. Carries `txHash`. | no | Re-read the job later. **Do not resend.** |
 | `TIMEOUT` | The wait ended before consensus did. Carries `txHash`. | no | Look the transaction up; it may still complete. **Do not resend.** |
 | `NETWORK_UNREACHABLE` | RPC or wallet not answering. | yes | Retry reads after a pause. For a write with a `txHash`, look it up first. |
+| `COPY_UNAVAILABLE` | REST only. `/v1/stats` was called on a server that has no database copy configured. | no | Use a server that has one, or read the jobs directly. See [Database copy](database.html). |
 | `CONTRACT_NOT_FOUND` | No Allocyn contract at the address on that network. | no | Check network and address. |
 | `DATA_INTEGRITY` | The contract returned data the SDK refuses (malformed, or hashes that do not match). | no | Do not use that data. Report it. |
 | `CONFIGURATION` | Bad client options. | no | Fix the configuration. |

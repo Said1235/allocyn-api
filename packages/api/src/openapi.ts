@@ -65,6 +65,16 @@ export const SCHEMAS: Record<string, S> = {
     sent: { type: "boolean", description: "Always false: nothing is sent or signed here." },
     readAt: { type: "string", format: "date-time" }, next: { type: "string" }, notes: { type: "array", items: { type: "string" } },
    }, ["jobId", "action", "status", "final", "canProceed", "reasons", "whoMaySign", "intent", "sdk", "appLink", "sent", "readAt", "next", "notes"]),
+  Stats: obj({
+    source: { type: "string", enum: ["copy"], description: "Counted in the database copy, not read from the contract." },
+    contract: { type: ["string", "null"] }, network: { type: ["string", "null"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran. Jobs created since are not counted." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    filter: obj({ client: { type: ["string", "null"] }, worker: { type: ["string", "null"] } }),
+    jobs: obj({ total: int, byStatus: obj({ OPEN: int, IN_PROGRESS: int, VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int }) }),
+    receipts: { oneOf: [obj({ total: int, byOutcome: obj({ VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int, PENDING: int }) }), { type: "null" }], description: "Null when filtering by client." },
+    notes: { type: "array", items: str },
+  }),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -91,12 +101,12 @@ export const SCHEMAS: Record<string, S> = {
     phase: { type: "string", enum: ["idle", "awaiting_wallet", "submitted", "in_consensus", "decided", "finalized", "cancelled", "timed_out", "undetermined", "rejected_by_user", "failed", "unknown"] },
     label: str, statusName: nstr, decided: { type: "boolean" }, failureMessage: nstr,
   }),
-  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "FORBIDDEN", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "INTERNAL"] }, message: str, retryable: { type: "boolean" }, field: str }, ["code", "message", "retryable"]) }),
+  ErrorResponse: obj({ success: { type: "boolean", enum: [false] }, error: obj({ code: { type: "string", enum: ["INVALID_ARGUMENT", "NOT_FOUND", "JOB_NOT_FOUND", "RECEIPT_NOT_FOUND", "METHOD_NOT_ALLOWED", "RATE_LIMITED", "FORBIDDEN", "UPSTREAM_UNAVAILABLE", "UPSTREAM_TIMEOUT", "DATA_INTEGRITY", "CONTRACT_NOT_FOUND", "COPY_UNAVAILABLE", "INTERNAL"] }, message: str, retryable: { type: "boolean" }, field: str }, ["code", "message", "retryable"]) }),
 };
 
 const ERROR_TEXT: Record<number, string> = {
   400: "Invalid parameter.", 404: "Not found.", 429: "Rate limit exceeded. See Retry-After.",
-  502: "The network or contract answered badly or not at all.", 503: "The network did not answer.", 504: "The network took too long to answer.",
+  502: "The network or contract answered badly or not at all.", 503: "The network did not answer, or the optional database copy is not configured.", 504: "The network took too long to answer.",
 };
 
 export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S {
@@ -121,7 +131,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.3.0",
+      title: "Allocyn API", version: "1.4.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

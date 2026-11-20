@@ -27,7 +27,7 @@ Base URL: the address of the API you run (default `http://localhost:8787`). The 
 | 405 | `METHOD_NOT_ALLOWED` | Not a GET. |
 | 429 | `RATE_LIMITED` | Wait `Retry-After` seconds. |
 | 502 | `UPSTREAM_UNAVAILABLE`, `CONTRACT_NOT_FOUND`, `DATA_INTEGRITY` | The network or contract did not answer, or answered with data the API refuses to pass on. |
-| 503 | `UPSTREAM_UNAVAILABLE` | Only from `/v1/health?deep=true`. |
+| 503 | `UPSTREAM_UNAVAILABLE`, `COPY_UNAVAILABLE` | `UPSTREAM_UNAVAILABLE`: only from `/v1/health?deep=true`. `COPY_UNAVAILABLE`: `/v1/stats` on a server with no database copy configured (not retryable). |
 | 504 | `UPSTREAM_TIMEOUT` | The network took longer than `REQUEST_TIMEOUT_MS`. |
 | 500 | `INTERNAL` | Unexpected. The message is generic on purpose; details stay in the server log. |
 

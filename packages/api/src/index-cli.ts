@@ -11,7 +11,9 @@ import type { IndexResult } from "./indexer.ts";
  * The secret key is read here and nowhere else: the public API function does not load it.
  */
 async function main(): Promise<number> {
-  const config = loadConfig();
+  // The API reads the copy with a public key; the indexer writes with the secret one. Keep the two apart:
+  // the SUPABASE_* variables are the indexer's own and are not part of the API configuration.
+  const config = loadConfig(Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SUPABASE_"))));
   const url = process.env.SUPABASE_URL?.trim();
   const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!url || !secretKey) throw new ConfigError("Set SUPABASE_URL and SUPABASE_SECRET_KEY.");

@@ -26,6 +26,8 @@ Vercel looks for serverless functions **before** it runs the build, so `api/inde
 | `TRUST_PROXY` | `true` |
 | `REQUEST_TIMEOUT_MS` | `8000` (keep it under the function's duration limit) |
 | `GENLAYER_NETWORK` | `studionet` |
+| `SUPABASE_URL` | optional: the Supabase project URL, to turn on `/v1/stats` (see [Database copy](database.html)). Set it together with the next one |
+| `SUPABASE_PUBLISHABLE_KEY` | optional: the project's **public** (publishable) key. Never the secret key: the API refuses to start with one |
 
 Do **not** add a private key or seed phrase: the API refuses to start if it finds one.
 
