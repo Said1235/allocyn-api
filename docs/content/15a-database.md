@@ -58,7 +58,7 @@ Row level security is on for every table. The public key can read jobs and recei
 | Indexer (`npm run index`) | Written and tested against the simulated contract and a stand-in for the Supabase REST API that enforces the same table rules. |
 | Scheduled run (`.github/workflows/index.yml`) | Runs once an hour, and by hand from the Actions tab. It does nothing until the two secrets exist. |
 | First run on the real project | It recorded which contract and network the database mirrors and found **no jobs**, because the contract had none yet. Copying real jobs into the hosted database has **not** been seen. |
-| `GET /v1/stats` and the MCP tool `get_stats` | Built. Tested against a stand-in for the Supabase REST API (row counts, filters, key header) and against the simulated contract. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; a request with the real public key to the hosted endpoint has **not** been tried. |
+| `GET /v1/stats` and the MCP tool `get_stats` | Live. Tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API it answered from the real project with the public key: the right contract and refresh time, all zeros because the copy holds no jobs yet. Counting real jobs has **not** been seen. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. |
 | Lists from the copy | **Not built.** `GET /v1/jobs` still reads the contract. |
 
 ## How it works
@@ -168,7 +168,7 @@ curl "https://<ref>.supabase.co/rest/v1/jobs?status=eq.OPEN&order=job_number.des
   -H "apikey: <your publishable key>"
 ```
 
-> The grants were checked with the public database role. This request, with a real publishable key against the hosted endpoint, has **not** been tried.
+> The grants were checked with the public database role. The API makes this kind of request with the real public key for `/v1/stats` (row counts and the index status), and it works. The exact `jobs` list request above was not run.
 
 ## Read it with care
 

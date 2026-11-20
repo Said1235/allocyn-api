@@ -22,7 +22,7 @@ The routes and shapes of 1.0.0 to 1.3.0 did not change. Everything below is adde
 - **The docs header on phones.** The theme button was pushed off the screen and every page scrolled sideways. The "Landing page" pill now shows only its icon on small screens and the search box can shrink.
 
 **Not verified yet**
-- The statistics were tested against a stand-in for the Supabase REST API (row counts, filters, the key header) and against the simulated contract. The public role's permissions were checked directly in the real database. A request with the real public key to the hosted endpoint has not been tried, and the real copy holds no jobs yet, because the contract had none when the indexer ran.
+- The statistics were tested against a stand-in for the Supabase REST API (row counts, filters, the key header) and against the simulated contract, and the public role's permissions were checked directly in the real database. On the deployed API, `/v1/stats` answered from the real project with the real public key: the right contract, network and refresh time, and zeros everywhere, because the copy holds no jobs yet (the contract had none when the indexer ran). Counting real jobs has not been seen.
 - Signing with MetaMask has not been tried on the live network.
 
 ## 1.3.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
