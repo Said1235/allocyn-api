@@ -5,7 +5,20 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.4.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.5.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.5.0 (API)
+
+The routes and shapes of 1.0.0 to 1.4.0 did not change. Everything below is added, and the default behaviour of `GET /v1/jobs` is the same as before.
+
+**Added**
+- **`source` on `GET /v1/jobs`** (and the MCP tool `list_jobs`): `contract` (default, live), `copy` or `auto`. With `copy`, the list is one indexed query on the [database copy](database.html): newest first, full pages, filters by `status`, `client` and `worker`, no scan window. With `auto`, the copy is used when it is configured and reachable, and the contract answers otherwise.
+- **Freshness in the answer.** The list now also returns `source`, `syncedAt` (when the indexer last ran; null from the contract) and `notes`. From the copy, `scanned` is `0`.
+
+**Why the default did not change.** The copy is final data only and as old as the last indexer run, so a job created a few minutes ago is not in it. A list that silently hid it would be a different answer from the one `/v1/jobs` has always given, so you choose the copy with `source`.
+
+**Not verified yet**
+- The copy list was tested against a stand-in for the Supabase REST API and the simulated contract. The exact request (`jobs` with `order=job_number.desc`, `limit` and filters) has not been run against the hosted database with the public key, and the copy there holds no jobs yet.
 
 ## 1.4.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
 

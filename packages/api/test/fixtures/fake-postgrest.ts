@@ -73,6 +73,18 @@ export async function startFakePostgrest(key = "sb_secret_test_key_123"): Promis
         res.writeHead(200, { "Content-Range": rows.length ? `0-${rows.length - 1}/${rows.length}` : "*/0" });
         return res.end();
       }
+      if (table === "jobs" && req.method === "GET" && u.searchParams.get("order") === "job_number.desc") {
+        // The public list: filters on status/client/worker, a job_number upper bound, newest first.
+        const lim = Number(u.searchParams.get("limit") ?? 1000);
+        const lt = u.searchParams.get("job_number");
+        const cols = (u.searchParams.get("select") ?? "").split(",");
+        const num = (j: any) => Number(String(j.id).slice(4));
+        const rows = [...db.jobs.values()].filter((j) => {
+          for (const c of ["status", "client", "worker"]) { const f = u.searchParams.get(c); if (f?.startsWith("eq.") && String(j[c]) !== f.slice(3)) return false; }
+          return !lt || num(j) < Number(lt.slice(3));
+        }).sort((a, b) => num(b) - num(a)).slice(0, lim);
+        return send(res, 200, rows.map((j) => Object.fromEntries(cols.map((c) => [c, c === "job_number" ? num(j) : j[c] ?? null]))));
+      }
       if (table === "jobs" && req.method === "GET") {
         const lim = Number(u.searchParams.get("limit") ?? 1000);
         const rows = [...db.jobs.values()].filter((j) => j.status !== "VERIFIED").sort((a, b) => a.synced_at.localeCompare(b.synced_at)).slice(0, lim);

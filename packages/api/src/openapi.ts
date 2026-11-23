@@ -53,7 +53,7 @@ export const SCHEMAS: Record<string, S> = {
     verify: { type: "array", items: str }, notes: { type: "array", items: str },
   }),
   JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int }),
-  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int, description: "How many job ids were read for this page." } }),
+  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int, description: "How many job ids were read from the contract for this page. 0 when the list came from the database copy." }, source: { type: "string", enum: ["contract", "copy"], description: "Where this page was read from." }, syncedAt: { type: ["string", "null"], format: "date-time", description: "From the copy: when the indexer last ran. Null when read from the contract." }, notes: { type: "array", items: { type: "string" } } }),
   PreparedAction: obj({
     jobId: { type: "string" }, action: { type: "string", enum: ["accept", "submit", "evaluate"] }, status: { type: "string" }, final: { type: "boolean" },
     canProceed: { type: "boolean", description: "True when the contract would accept this action from the right account right now." },
@@ -131,7 +131,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.4.0",
+      title: "Allocyn API", version: "1.5.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

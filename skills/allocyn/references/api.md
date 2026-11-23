@@ -1,13 +1,13 @@
 # Allocyn API reference for agents
 
-Generated from API 1.4.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
+Generated from API 1.5.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
 
 | Endpoint | MCP tool | Parameters | What it does |
 |---|---|---|---|
 | `GET /v1/health` | `get_health` | `?deep` (boolean) | Liveness. Says the API process is up. |
 | `GET /v1/meta` | `get_meta` | none | Network, contract and API facts. Which network and contract this API reads, the contract profile it was built for, and the read consistency in use. |
 | `GET /v1/limits` | `get_limits` | none | Input limits. The limits the contract reports right now (get_limits()), next to the copy this API was built for. |
-| `GET /v1/jobs` | `list_jobs` | `?limit` (integer, max 50), `?before` (string), `?status` (OPEN, IN_PROGRESS, VERIFIED, NEEDS_REVISION, INCONCLUSIVE), `?client` (string), `?worker` (string), `?consistency` (latest or final) | List jobs. Jobs from newest to oldest, with an optional filter by status, client or worker. |
+| `GET /v1/jobs` | `list_jobs` | `?limit` (integer, max 50), `?before` (string), `?status` (OPEN, IN_PROGRESS, VERIFIED, NEEDS_REVISION, INCONCLUSIVE), `?client` (string), `?source` (contract, copy, auto), `?worker` (string), `?consistency` (latest or final) | List jobs. Jobs from newest to oldest, with an optional filter by status, client or worker. |
 | `GET /v1/stats` | `get_stats` | `?client` (string), `?worker` (string) | Counts and statistics. How many jobs there are in each status, and how many deliveries got each verdict, optionally for one client or one worker. |
 | `GET /v1/jobs/{jobId}` | `get_job` | `jobId`, `?consistency` (latest or final) | Read a job. The job's terms, parties, status and receipt ids, read from the contract. |
 | `GET /v1/jobs/{jobId}/proof` | `get_job_proof` | `jobId`, `?consistency` (latest or final) | Proof summary of a job. A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. |

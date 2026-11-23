@@ -11,11 +11,15 @@ export interface CopyStatus {
   network: string | null;
 }
 
+export interface CopyJobRow { id: string; job_number: number; title: string; status: string; client: string; worker: string | null; delivery_count: number }
+
 export interface CopyReader {
   /** The public part of the indexer's state, or null when the indexer has never written it. */
   status(): Promise<CopyStatus | null>;
   /** Exact number of rows that match the PostgREST filters, e.g. `{ status: "eq.OPEN", worker: "eq.0x…" }`. */
   count(table: "jobs" | "receipts", filters: Record<string, string>): Promise<number>;
+  /** Jobs newest first, one indexed query. `before` keeps only job numbers lower than it. */
+  listJobs(o: { filters: Record<string, string>; before?: number; limit: number }): Promise<CopyJobRow[]>;
 }
 
 export class CopyError extends Error {
@@ -74,6 +78,13 @@ export function createCopyReader(o: CopyReaderOptions): CopyReader {
       const m = /\/(\d+)$/.exec(res.headers.get("content-range") ?? "");
       if (!m) throw new CopyError("The database copy did not return a row count.");
       return Number(m[1]);
+    },
+    async listJobs({ filters, before, limit }) {
+      const q = new URLSearchParams({ select: "id,job_number,title,status,client,worker,delivery_count", order: "job_number.desc", limit: String(Math.max(1, Math.floor(limit))), ...filters });
+      if (before !== undefined) q.set("job_number", `lt.${Math.floor(before)}`);
+      const rows = await (await call("GET", `jobs?${q.toString()}`)).json();
+      if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
+      return rows as CopyJobRow[];
     },
   };
 }

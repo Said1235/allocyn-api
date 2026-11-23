@@ -4,3 +4,4 @@ docs/dist
 public/
 packages/*/dist
 .stage
+__pycache__/

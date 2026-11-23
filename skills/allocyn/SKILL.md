@@ -7,7 +7,7 @@ description: Read Allocyn work agreements, delivery receipts and transaction sta
 
 Allocyn is a contract on GenLayer Studionet. A client writes a job with 1 to 20 written criteria, a worker delivers a public link, and validators read that page and judge each criterion. The Allocyn API exposes that data **read-only**. This skill is about reading it correctly.
 
-Generated from API 1.4.0. Full endpoint list: [references/api.md](references/api.md).
+Generated from API 1.5.0. Full endpoint list: [references/api.md](references/api.md).
 
 ## Pick how to read
 

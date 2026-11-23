@@ -91,8 +91,8 @@ export const ROUTES: Route[] = [
   },
   {
     method: "GET", path: "/v1/jobs", operationId: "listJobs", tag: "Jobs", summary: "List jobs",
-    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped.",
-    pathParams: [], query: LIST_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobList", errors: [400, 429, 502],
+    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped. With `source=copy` (or `auto`) the list is read from the optional database copy instead: one indexed query, pages are full, but the data is final-only and as old as `syncedAt`. The default stays `contract`, which is live.",
+    pathParams: [], query: LIST_QUERY, chainRead: true, cache: "no-store", schemaRef: "JobList", errors: [400, 429, 502, 503],
     handler: async (ctx, c) => listJobs(ctx, c),
   },
   {

@@ -1778,6 +1778,13 @@ function createCopyReader(o) {
       const m = /\/(\d+)$/.exec(res.headers.get("content-range") ?? "");
       if (!m) throw new CopyError("The database copy did not return a row count.");
       return Number(m[1]);
+    },
+    async listJobs({ filters, before, limit }) {
+      const q = new URLSearchParams({ select: "id,job_number,title,status,client,worker,delivery_count", order: "job_number.desc", limit: String(Math.max(1, Math.floor(limit))), ...filters });
+      if (before !== void 0) q.set("job_number", `lt.${Math.floor(before)}`);
+      const rows = await (await call("GET", `jobs?${q.toString()}`)).json();
+      if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
+      return rows;
     }
   };
 }
@@ -2148,10 +2155,49 @@ async function latestJobNumber(client, now) {
   latestCache.set(client, { n, at: now });
   return n;
 }
+async function listFromCopy(ctx, q, limit) {
+  const copy = ctx.copy;
+  if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so source=copy is not available. Use source=contract.", { retryable: false });
+  const filters = {
+    ...q.status ? { status: `eq.${q.status}` } : {},
+    ...q.client ? { client: `eq.${q.client.toLowerCase()}` } : {},
+    ...q.worker ? { worker: `eq.${q.worker.toLowerCase()}` } : {}
+  };
+  try {
+    const [state, rows] = await Promise.all([
+      copy.status(),
+      copy.listJobs({ filters, ...q.before ? { before: Number(q.before.slice(4)) } : {}, limit: limit + 1 })
+    ]);
+    const page = rows.slice(0, limit);
+    const items = page.map((r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count }));
+    return {
+      items,
+      nextCursor: rows.length > limit && page.length ? page[page.length - 1].id : null,
+      latest: state && state.lastJobNumber > 0 ? `job-${state.lastJobNumber}` : null,
+      scanned: 0,
+      source: "copy",
+      syncedAt: state?.lastRunAt ? new Date(state.lastRunAt).toISOString() : null,
+      notes: ["Read from the database copy: final data only, as of `syncedAt`. Jobs created or changed since then are not here. Use source=contract for the live state."]
+    };
+  } catch (e) {
+    if (e instanceof CopyError) throw new ApiError(502, "UPSTREAM_UNAVAILABLE", "The database copy could not be read. Try again, or use source=contract.", { retryable: true });
+    throw e;
+  }
+}
 async function listJobs(ctx, consistency) {
-  const client = ctx.client(consistency);
   const q = parseQuery({ query: LIST_QUERY }, ctx.query);
   const limit = q.limit ? Number(q.limit) : 20;
+  const source = q.source ?? "contract";
+  if (source === "copy") return listFromCopy(ctx, q, limit);
+  if (source === "auto" && ctx.copy) {
+    try {
+      return await listFromCopy(ctx, q, limit);
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 502) throw e;
+    }
+  }
+  const fellBack = source === "auto";
+  const client = ctx.client(consistency);
   const latest = await latestJobNumber(client, ctx.now().getTime());
   const start = Math.min(latest, q.before ? Number(q.before.slice(4)) - 1 : latest);
   const items = [];
@@ -2176,13 +2222,14 @@ async function listJobs(ctx, consistency) {
     }
   }
   if (next >= 1) nextCursor = `job-${next + 1}`;
-  return { items, nextCursor, latest: latest ? `job-${latest}` : null, scanned };
+  return { items, nextCursor, latest: latest ? `job-${latest}` : null, scanned, source: "contract", syncedAt: null, notes: fellBack ? ["source=auto: the database copy is not configured or could not be read, so the contract was read directly."] : [] };
 }
 var LIST_QUERY = [
   { name: "limit", description: "How many jobs to return, 1 to 50 (default 20).", schema: { type: "integer", minimum: 1, maximum: 50 }, example: "20" },
   { name: "before", description: "Cursor: only jobs older than this id. Use the `nextCursor` of the previous page.", schema: { type: "string", pattern: "^job-[1-9][0-9]{0,8}$" }, example: "job-10" },
   { name: "status", description: "Only jobs in this status.", schema: { type: "string", enum: ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"] }, example: "VERIFIED" },
   { name: "client", description: "Only jobs created by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "a1".repeat(20) },
+  { name: "source", description: "Where the list is read from: `contract` (default, live, slower), `copy` (the database copy: one indexed query, final data as of `syncedAt`) or `auto` (the copy when it is configured and reachable, else the contract).", schema: { type: "string", enum: ["contract", "copy", "auto"] }, example: "copy" },
   { name: "worker", description: "Only jobs accepted by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
 ];
 
@@ -2414,13 +2461,13 @@ var ROUTES = [
     operationId: "listJobs",
     tag: "Jobs",
     summary: "List jobs",
-    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped.",
+    description: "Jobs from newest to oldest, with an optional filter by `status`, `client` or `worker`. The contract has no list view, so this reads job ids one by one, at most 100 per request, and filters what it reads: a page can hold fewer than `limit` jobs while `nextCursor` is not null. Pass `nextCursor` as `before` to continue exactly where the scan stopped. With `source=copy` (or `auto`) the list is read from the optional database copy instead: one indexed query, pages are full, but the data is final-only and as old as `syncedAt`. The default stays `contract`, which is live.",
     pathParams: [],
     query: LIST_QUERY,
     chainRead: true,
     cache: "no-store",
     schemaRef: "JobList",
-    errors: [400, 429, 502],
+    errors: [400, 429, 502, 503],
     handler: async (ctx, c) => listJobs(ctx, c)
   },
   {
@@ -2652,7 +2699,7 @@ var SCHEMAS = {
     notes: { type: "array", items: str2 }
   }),
   JobSummary: obj({ id: { type: "string", pattern: "^job-[1-9][0-9]*$" }, title: str2, status: { type: "string", enum: JOB_STATUS }, client: addr, worker: { oneOf: [addr, { type: "null" }] }, deliveryCount: int3 }),
-  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int3, description: "How many job ids were read for this page." } }),
+  JobList: obj({ items: { type: "array", items: ref("JobSummary") }, nextCursor: { type: ["string", "null"], description: "Pass as `before` to continue. Null when there is nothing older." }, latest: { type: ["string", "null"], description: "The newest job id, or null when there are no jobs." }, scanned: { ...int3, description: "How many job ids were read from the contract for this page. 0 when the list came from the database copy." }, source: { type: "string", enum: ["contract", "copy"], description: "Where this page was read from." }, syncedAt: { type: ["string", "null"], format: "date-time", description: "From the copy: when the indexer last ran. Null when read from the contract." }, notes: { type: "array", items: { type: "string" } } }),
   PreparedAction: obj({
     jobId: { type: "string" },
     action: { type: "string", enum: ["accept", "submit", "evaluate"] },
@@ -2754,7 +2801,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.4.0",
+      version: "1.5.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2866,7 +2913,7 @@ function renderVerifyError(status, message) {
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.4.0";
+var MCP_SERVER_VERSION = "1.5.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {

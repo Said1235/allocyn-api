@@ -14,11 +14,11 @@ The API reads the contract directly, and it needs no database to do it. This pag
 <div class="cards two">
 <div class="card">
 
-<span class="badge warn">Not in the API yet</span>
+<span class="badge ok">Ready</span>
 
 ### Fast lists with real filters
 
-The contract has no list or count view, so `GET /v1/jobs` finds the newest job by bisecting and then reads up to 100 jobs per request. From the copy, a list is one indexed query: newest first, filtered by status, client or worker, with no scan window. Today you can run that query yourself; the API does not use it yet.
+The contract has no list or count view, so `GET /v1/jobs` finds the newest job by bisecting and then reads up to 100 jobs per request. From the copy, a list is one indexed query: newest first, filtered by status, client or worker, with no scan window. Ask for it with `GET /v1/jobs?source=copy`, or `source=auto` to fall back to the contract when the copy is down. The default stays `contract`, because the copy is final data as of its last refresh.
 
 </div>
 <div class="card">
@@ -59,7 +59,7 @@ Row level security is on for every table. The public key can read jobs and recei
 | Scheduled run (`.github/workflows/index.yml`) | Runs once an hour, and by hand from the Actions tab. It does nothing until the two secrets exist. |
 | First run on the real project | It recorded which contract and network the database mirrors and found **no jobs**, because the contract had none yet. Copying real jobs into the hosted database has **not** been seen. |
 | `GET /v1/stats` and the MCP tool `get_stats` | Live. Tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API it answered from the real project with the public key: the right contract and refresh time, all zeros because the copy holds no jobs yet. Counting real jobs has **not** been seen. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. |
-| Lists from the copy | **Not built.** `GET /v1/jobs` still reads the contract. |
+| Lists from the copy | `GET /v1/jobs?source=copy` and `source=auto`. Tested against a stand-in for the Supabase REST API. The default is still the contract. The exact list request has **not** been run against the hosted database, which holds no jobs yet. |
 
 ## How it works
 
@@ -145,6 +145,20 @@ To run it from your own machine instead: `SUPABASE_URL=... SUPABASE_SECRET_KEY=.
 
 `syncedAt` is when the indexer last ran: jobs created since are not counted yet. `byOutcome` counts deliveries by the verdict the validators gave; `PENDING` are still waiting, and a delivery replaced before it was judged is only in `total`. Answers are cached for 30 seconds. On a server with no copy configured the answer is `503 COPY_UNAVAILABLE`.
 
+## Lists through the API
+
+```bash
+curl -s 'https://<your-api>/v1/jobs?source=copy&status=OPEN&limit=20'
+```
+
+| `source` | Reads | Good for |
+|---|---|---|
+| `contract` (default) | The contract, live. At most 100 ids per request, so a page can be short. | The current state, a job just created. |
+| `copy` | The database copy: one query, full pages. `503 COPY_UNAVAILABLE` if the server has none, `502` if it cannot be read. | Browsing and filtering many jobs. |
+| `auto` | The copy when it works, otherwise the contract (the answer says which). | Clients that want speed but must always get an answer. |
+
+The answer carries `source`, `syncedAt` (when the indexer last ran) and `notes`. `nextCursor` works the same: pass it as `before`. A list from the copy does not contain jobs created or changed since `syncedAt`.
+
 ## Query it
 
 From the SQL editor, or any client with the right access:
@@ -168,7 +182,7 @@ curl "https://<ref>.supabase.co/rest/v1/jobs?status=eq.OPEN&order=job_number.des
   -H "apikey: <your publishable key>"
 ```
 
-> The grants were checked with the public database role. The API makes this kind of request with the real public key for `/v1/stats` (row counts and the index status), and it works. The exact `jobs` list request above was not run.
+> The grants were checked with the public database role. The API makes this kind of request with the real public key for `/v1/stats` (row counts and the index status), and it works. The exact `jobs` list request above, which `source=copy` also makes, was not run.
 
 ## Read it with care
 
@@ -185,4 +199,4 @@ curl "https://<ref>.supabase.co/rest/v1/jobs?status=eq.OPEN&order=job_number.des
 
 ## Next
 
-The next step is for `GET /v1/jobs` to read the copy as well, with the contract as a fallback and the freshness of each answer shown in the response. That is not built. See the [changelog](changelog.html) for what is done and what is not.
+What is left is checking the list request on the hosted database once it holds real jobs, and deciding whether `auto` should become the default after that. See the [changelog](changelog.html) for what is done and what is not.
