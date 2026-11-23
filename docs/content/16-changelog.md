@@ -18,7 +18,7 @@ The routes and shapes of 1.0.0 to 1.4.0 did not change. Everything below is adde
 **Why the default did not change.** The copy is final data only and as old as the last indexer run, so a job created a few minutes ago is not in it. A list that silently hid it would be a different answer from the one `/v1/jobs` has always given, so you choose the copy with `source`.
 
 **Not verified yet**
-- The copy list was tested against a stand-in for the Supabase REST API and the simulated contract. The exact request (`jobs` with `order=job_number.desc`, `limit` and filters) has not been run against the hosted database with the public key, and the copy there holds no jobs yet.
+- The copy list was tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API, `GET /v1/jobs?source=copy` ran the real list request against the hosted database with the public key and was accepted (`200`, with the real `syncedAt`), but it returned an empty list, because the copy holds no jobs yet. Filters and the cursor have not been seen on real rows.
 
 ## 1.4.0 (API) · 0.2.0 (SDK) · 0.2.0 (CLI)
 
