@@ -1,6 +1,6 @@
 {
   "name": "@allocyn/api",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Read-only REST API over the Allocyn contract on GenLayer.",
   "type": "module",
   "private": true,

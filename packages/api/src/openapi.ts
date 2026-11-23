@@ -13,7 +13,13 @@ const JOB_STATUS = ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONC
 const addr: S = { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" };
 
 export const SCHEMAS: Record<string, S> = {
-  Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" } } }),
+  Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" }, description: "With `deep=true`: `chain` is `ok`; `copy` (only when a database copy is configured) is `ok`, `stale`, `failing` or `unavailable`." }, copy: obj({
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last wrote the position." },
+    lagSeconds: { type: ["integer", "null"], description: "Seconds since `syncedAt`." },
+    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs hourly)." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    lastRun: { type: ["object", "null"], additionalProperties: false, description: "The newest recorded indexer run. Null when none was recorded.", properties: { ok: { type: "boolean" }, finishedAt: { type: "string", format: "date-time" }, newJobs: { type: "integer" }, refreshedJobs: { type: "integer" }, receipts: { type: "integer" }, failedRows: { type: "integer" }, rounds: { type: "integer" } } },
+  }), }, ["status", "time", "checks"]),
   Meta: obj({
     name: { type: "string", enum: ["Allocyn"] }, sdkVersion: str,
     network: obj({ name: str, label: str, chainId: int, rpcUrl: str, explorerUrl: str, sdkAlias: str }),
@@ -131,7 +137,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.5.0",
+      title: "Allocyn API", version: "1.6.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

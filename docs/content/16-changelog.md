@@ -5,7 +5,25 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.5.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.6.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.6.0 (API)
+
+The routes and shapes of 1.0.0 to 1.5.0 did not change. Everything below is added or faster, and a request without the new parameters answers as before.
+
+**Added**
+- **Search and "changed since" on `GET /v1/jobs`.** `q` searches the title and description (every word must appear, any language). `updatedSince` returns only the jobs whose content changed at or after a time, so a dashboard can sync without reading everything. Both need the [database copy](database.html), so `source` defaults to `copy` when you use them; with `source=contract` they are refused (`400`), and when the copy is down there is no silent fallback (`502`). Also in the MCP tool `list_jobs`.
+- **The copy's health in `GET /v1/health?deep=true`.** With a copy configured, a deep check adds `checks.copy` (`ok`, `stale`, `failing` or `unavailable`) and a `copy` object: when the indexer last ran, how many seconds ago, how far it got and how the last run went. More than three hours without a run counts as stale. A stale or unreachable copy never turns the check into a `503`: the contract is the source of truth. A plain health check still reads nothing.
+- **A record of every indexer run** (`indexer_runs`: when, how many jobs and receipts, how many rows failed). The newest 200 are kept. The public key sees the numbers; the error text stays private.
+
+**Faster**
+- **`GET /v1/stats` makes two requests instead of about thirteen.** A read-only database function (`job_stats`) returns every count at once. If the database does not have the function yet (its migration is not applied), the API falls back to counting one by one and gives the same numbers.
+
+**Database changes** (apply the new migrations, in order): `job_stats` function; `indexer_runs` table; full-text `search` column and an `updated_at` column on `jobs` that moves only when a job's content changes (not when it is merely re-read). A first version of that trigger treated every update as a change; the fourth migration fixes it. The error was found by testing on the hosted database, not by the stand-in.
+
+**Not verified yet**
+- The indexer writing its run records has been tested against the stand-in, and the table's permissions on the hosted database. A real hourly run writing a row has not been seen yet.
+- `q` and `updatedSince` were checked on the hosted database in SQL (the search column, the trigger and the public role's rights) and through a stand-in for the REST layer. Real jobs behind the deployed API are still missing, because the contract has none.
 
 ## 1.5.0 (API)
 

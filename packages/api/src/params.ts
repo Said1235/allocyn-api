@@ -5,7 +5,7 @@ import type { Route } from "./routes.ts";
 export interface QueryParam {
   name: string;
   description: string;
-  schema: { type: "string" | "integer" | "boolean"; enum?: string[]; pattern?: string; minimum?: number; maximum?: number; default?: string | number };
+  schema: { type: "string" | "integer" | "boolean"; enum?: string[]; pattern?: string; format?: "date-time"; minLength?: number; maxLength?: number; minimum?: number; maximum?: number; default?: string | number };
   example: string;
   /** The caller must send it. */
   required?: boolean;
@@ -31,6 +31,8 @@ export function parseQuery(route: Pick<Route, "query">, raw: URLSearchParams): R
     } else {
       if (s.enum && !s.enum.includes(v)) throw bad(`must be one of: ${s.enum.join(", ")}.`);
       if (s.pattern && !new RegExp(s.pattern).test(v)) throw bad(`is not valid. ${q.description}`);
+      if ((s.minLength !== undefined && v.trim().length < s.minLength) || (s.maxLength !== undefined && v.length > s.maxLength)) throw bad(`must be ${s.minLength ?? 0} to ${s.maxLength ?? "many"} characters.`);
+      if (s.format === "date-time" && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/.test(v) || Number.isNaN(Date.parse(v)))) throw bad(`must be a date and time with a zone, like 2026-11-20T10:00:00Z.`);
     }
     out[q.name] = v;
   }

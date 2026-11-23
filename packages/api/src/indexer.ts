@@ -29,7 +29,11 @@ export interface IndexStore {
   upsertJobs(rows: JobRow[]): Promise<void>;
   upsertReceipts(rows: ReceiptRow[]): Promise<void>;
   saveState(state: { lastJobNumber: number; lastError: string | null; contract: string; network: string }, now: Date): Promise<void>;
+  /** Writes one row to `indexer_runs` and keeps the newest 200. Best effort: the caller ignores a failure here. */
+  recordRun?(run: RunRecord): Promise<void>;
 }
+
+export interface RunRecord { startedAt: Date; finishedAt: Date; ok: boolean; newJobs: number; refreshedJobs: number; receipts: number; failedRows: number; rounds: number; lastJobNumber: number | null; error: string | null }
 
 export class IndexerError extends Error {
   readonly status: number | undefined;
@@ -215,6 +219,14 @@ export function createSupabaseStore(o: SupabaseStoreOptions): IndexStore {
     },
     async upsertJobs(rows) { if (rows.length) await call("POST", "jobs?on_conflict=id", rows, "resolution=merge-duplicates,return=minimal"); },
     async upsertReceipts(rows) { if (rows.length) await call("POST", "receipts?on_conflict=id", rows, "resolution=merge-duplicates,return=minimal"); },
+    async recordRun(r) {
+      const rows = (await call("POST", "indexer_runs", {
+        started_at: r.startedAt.toISOString(), finished_at: r.finishedAt.toISOString(), ok: r.ok, new_jobs: r.newJobs, refreshed_jobs: r.refreshedJobs,
+        receipts: r.receipts, failed_rows: r.failedRows, rounds: r.rounds, last_job_number: r.lastJobNumber, error: r.error ? r.error.slice(0, 500) : null,
+      }, "return=representation")) as Array<{ id: number }>;
+      const id = rows[0]?.id;
+      if (id && id > 200) await call("DELETE", `indexer_runs?id=lte.${id - 200}`, undefined, "return=minimal");
+    },
     async saveState(s, now) {
       await call("PATCH", "indexer_state?id=eq.1", { last_job_number: s.lastJobNumber, last_run_at: now.toISOString(), last_error: s.lastError, contract_address: s.contract, network: s.network }, "return=minimal");
     },

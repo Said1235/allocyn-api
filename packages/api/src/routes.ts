@@ -3,6 +3,7 @@ import { ApiError } from "./http.ts";
 import { buildProof, isFinalJob } from "./proof.ts";
 import { buildBadge } from "./badge.ts";
 import { listJobs, LIST_QUERY } from "./jobs-list.ts";
+import { readCopyHealth } from "./copy-health.ts";
 import { waitForJob, WAIT_QUERY } from "./wait.ts";
 import { prepareAction, PREPARE_QUERY } from "./prepare.ts";
 import { getStats, STATS_QUERY } from "./stats.ts";
@@ -66,13 +67,18 @@ const txHash: Param = { name: "txHash", description: "GenLayer transaction hash:
 export const ROUTES: Route[] = [
   {
     method: "GET", path: "/v1/health", operationId: "getHealth", tag: "System", summary: "Liveness",
-    description: "Says the API process is up. Add `?deep=true` to also read the contract once (job-1) and report whether the network answers. A deep check that fails returns 503.",
+    description: "Says the API process is up. Add `?deep=true` to also read the contract once (job-1) and report whether the network answers. A deep check that fails returns 503. With a database copy configured, a deep check also reports how old the copy is and how the last indexer run went (`copy`); a copy that is stale or unreachable never turns the check into a 503, because the contract is the source of truth.",
     pathParams: [], chainRead: false, deep: true, cache: "no-store", schemaRef: "Health", errors: [400, 429, 503],
     handler: async (ctx, _c) => {
       const base = { status: "ok" as const, time: ctx.now().toISOString(), checks: {} as Record<string, string> };
       if (ctx.query.get("deep") === "true") {
         try { await ctx.probe(); base.checks.chain = "ok"; }
         catch { throw new ApiError(503, "UPSTREAM_UNAVAILABLE", "The API is running but the GenLayer network did not answer.", { retryable: true }); }
+        if (ctx.copy) {
+          const copyHealth = await readCopyHealth(ctx.copy, ctx.now().getTime());
+          base.checks.copy = copyHealth.check;
+          return copyHealth.copy ? { ...base, copy: copyHealth.copy } : base;
+        }
       }
       return base;
     },

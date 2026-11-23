@@ -1750,12 +1750,13 @@ function createCopyReader(o) {
   if (!o.key) throw new CopyError("A public key is required.");
   assertPublicKey(o.key);
   const f = o.fetch ?? fetch;
-  async function call(method, pathAndQuery, count = false) {
+  async function call(method, pathAndQuery, count = false, body) {
     let res;
     try {
       res = await f(`${base.origin}/rest/v1/${pathAndQuery}`, {
         method,
-        headers: { apikey: o.key, "User-Agent": "allocyn-api/1", Accept: "application/json", ...count ? { Prefer: "count=exact" } : {} },
+        headers: { apikey: o.key, "User-Agent": "allocyn-api/1", Accept: "application/json", ...count ? { Prefer: "count=exact" } : {}, ...body !== void 0 ? { "Content-Type": "application/json" } : {} },
+        ...body !== void 0 ? { body: JSON.stringify(body) } : {},
         signal: AbortSignal.timeout(o.timeoutMs ?? 6e3)
       });
     } catch (e) {
@@ -1779,12 +1780,25 @@ function createCopyReader(o) {
       if (!m) throw new CopyError("The database copy did not return a row count.");
       return Number(m[1]);
     },
-    async listJobs({ filters, before, limit }) {
+    async listJobs({ filters, before, limit, search, updatedSince }) {
       const q = new URLSearchParams({ select: "id,job_number,title,status,client,worker,delivery_count", order: "job_number.desc", limit: String(Math.max(1, Math.floor(limit))), ...filters });
       if (before !== void 0) q.set("job_number", `lt.${Math.floor(before)}`);
+      if (search) q.set("search", `plfts(simple).${search}`);
+      if (updatedSince) q.set("updated_at", `gte.${updatedSince}`);
       const rows = await (await call("GET", `jobs?${q.toString()}`)).json();
       if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
       return rows;
+    },
+    async stats({ client, worker }) {
+      const out = await (await call("POST", "rpc/job_stats", false, { p_client: client, p_worker: worker })).json();
+      const num = (x) => typeof x === "number" && Number.isFinite(x);
+      if (!out || !out.jobs || !num(out.jobs.total) || out.receipts !== null && (!out.receipts || !num(out.receipts.total))) throw new CopyError("The database copy returned unexpected statistics.");
+      return out;
+    },
+    async lastRun() {
+      const res = await call("GET", "indexer_runs?select=ok,finished_at,new_jobs,refreshed_jobs,receipts,failed_rows,rounds&order=finished_at.desc&limit=1");
+      const r = (await res.json())[0];
+      return r ? { ok: r.ok, finishedAt: new Date(r.finished_at).toISOString(), newJobs: r.new_jobs, refreshedJobs: r.refreshed_jobs, receipts: r.receipts, failedRows: r.failed_rows, rounds: r.rounds } : null;
     }
   };
 }
@@ -2115,6 +2129,8 @@ function parseQuery(route, raw) {
     } else {
       if (s.enum && !s.enum.includes(v)) throw bad3(`must be one of: ${s.enum.join(", ")}.`);
       if (s.pattern && !new RegExp(s.pattern).test(v)) throw bad3(`is not valid. ${q.description}`);
+      if (s.minLength !== void 0 && v.trim().length < s.minLength || s.maxLength !== void 0 && v.length > s.maxLength) throw bad3(`must be ${s.minLength ?? 0} to ${s.maxLength ?? "many"} characters.`);
+      if (s.format === "date-time" && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/.test(v) || Number.isNaN(Date.parse(v)))) throw bad3(`must be a date and time with a zone, like 2026-11-20T10:00:00Z.`);
     }
     out[q.name] = v;
   }
@@ -2166,7 +2182,7 @@ async function listFromCopy(ctx, q, limit) {
   try {
     const [state, rows] = await Promise.all([
       copy.status(),
-      copy.listJobs({ filters, ...q.before ? { before: Number(q.before.slice(4)) } : {}, limit: limit + 1 })
+      copy.listJobs({ filters, ...q.before ? { before: Number(q.before.slice(4)) } : {}, ...q.q ? { search: q.q.trim() } : {}, ...q.updatedSince ? { updatedSince: new Date(q.updatedSince).toISOString() } : {}, limit: limit + 1 })
     ]);
     const page = rows.slice(0, limit);
     const items = page.map((r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count }));
@@ -2187,15 +2203,18 @@ async function listFromCopy(ctx, q, limit) {
 async function listJobs(ctx, consistency) {
   const q = parseQuery({ query: LIST_QUERY }, ctx.query);
   const limit = q.limit ? Number(q.limit) : 20;
-  const source = q.source ?? "contract";
+  const needsCopy = Boolean(q.q || q.updatedSince);
+  const source = q.source ?? (needsCopy ? "copy" : "contract");
+  if (needsCopy && source === "contract") throw new ApiError(400, "INVALID_ARGUMENT", `${q.q ? "q" : "updatedSince"} needs the database copy: use source=copy or source=auto.`, { field: q.q ? "q" : "updatedSince" });
   if (source === "copy") return listFromCopy(ctx, q, limit);
   if (source === "auto" && ctx.copy) {
     try {
       return await listFromCopy(ctx, q, limit);
     } catch (e) {
-      if (!(e instanceof ApiError) || e.status !== 502) throw e;
+      if (!(e instanceof ApiError) || e.status !== 502 || needsCopy) throw e;
     }
   }
+  if (needsCopy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it cannot search or filter by updatedSince.", { retryable: false });
   const fellBack = source === "auto";
   const client = ctx.client(consistency);
   const latest = await latestJobNumber(client, ctx.now().getTime());
@@ -2229,9 +2248,29 @@ var LIST_QUERY = [
   { name: "before", description: "Cursor: only jobs older than this id. Use the `nextCursor` of the previous page.", schema: { type: "string", pattern: "^job-[1-9][0-9]{0,8}$" }, example: "job-10" },
   { name: "status", description: "Only jobs in this status.", schema: { type: "string", enum: ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"] }, example: "VERIFIED" },
   { name: "client", description: "Only jobs created by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "a1".repeat(20) },
+  { name: "q", description: "Search the title and description (words, in any language; every word must appear). Needs the database copy, so `source` defaults to `copy` when this is set.", schema: { type: "string", minLength: 2, maxLength: 100 }, example: "logo" },
+  { name: "updatedSince", description: "Only jobs whose content changed at or after this time (date and time with a zone). A job that was only re-read does not count. Needs the database copy, so `source` defaults to `copy` when this is set.", schema: { type: "string", format: "date-time" }, example: "2026-11-20T00:00:00Z" },
   { name: "source", description: "Where the list is read from: `contract` (default, live, slower), `copy` (the database copy: one indexed query, final data as of `syncedAt`) or `auto` (the copy when it is configured and reachable, else the contract).", schema: { type: "string", enum: ["contract", "copy", "auto"] }, example: "copy" },
   { name: "worker", description: "Only jobs accepted by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
 ];
+
+// packages/api/src/copy-health.ts
+var STALE_AFTER_SECONDS = 3 * 3600;
+async function readCopyHealth(copy, nowMs) {
+  try {
+    const [status, run] = await Promise.all([copy.status(), copy.lastRun().catch((e) => {
+      if (e instanceof CopyError && e.status === 404) return null;
+      throw e;
+    })]);
+    const syncedAt = status?.lastRunAt ? new Date(status.lastRunAt).toISOString() : null;
+    const lagSeconds = syncedAt ? Math.max(0, Math.round((nowMs - Date.parse(syncedAt)) / 1e3)) : null;
+    const stale = lagSeconds === null || lagSeconds > STALE_AFTER_SECONDS;
+    const check = stale ? "stale" : run && !run.ok ? "failing" : "ok";
+    return { check, copy: { syncedAt, lagSeconds, staleAfterSeconds: STALE_AFTER_SECONDS, copiedThrough: status && status.lastJobNumber > 0 ? `job-${status.lastJobNumber}` : null, lastRun: run } };
+  } catch {
+    return { check: "unavailable", copy: null };
+  }
+}
 
 // packages/api/src/wait.ts
 import { createHash as createHash3 } from "node:crypto";
@@ -2344,6 +2383,31 @@ var STATS_QUERY = [
   { name: "worker", description: "Count only the jobs accepted by this address, and the deliveries made by it.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) }
 ];
 var cache = /* @__PURE__ */ new WeakMap();
+async function viaCounts(copy, client, worker) {
+  const jobFilter = { ...client ? { client: `eq.${client}` } : {}, ...worker ? { worker: `eq.${worker}` } : {} };
+  const receiptFilter = worker ? { worker: `eq.${worker}` } : {};
+  const [jobTotal, jobCounts, receipts] = await Promise.all([
+    copy.count("jobs", jobFilter),
+    Promise.all(JOB_STATUSES2.map((s) => copy.count("jobs", { ...jobFilter, status: `eq.${s}` }))),
+    client ? Promise.resolve(null) : Promise.all([
+      copy.count("receipts", receiptFilter),
+      ...OUTCOMES.map((o) => copy.count("receipts", { ...receiptFilter, overall_status: `eq.${o}` })),
+      copy.count("receipts", { ...receiptFilter, status: "eq.PENDING" })
+    ])
+  ]);
+  return {
+    jobs: { total: jobTotal, byStatus: Object.fromEntries(JOB_STATUSES2.map((s, i) => [s, jobCounts[i]])) },
+    receipts: receipts && { total: receipts[0], byOutcome: { VERIFIED: receipts[1], NEEDS_REVISION: receipts[2], INCONCLUSIVE: receipts[3], PENDING: receipts[4] } }
+  };
+}
+async function readRaw(copy, client, worker) {
+  try {
+    return await copy.stats({ client, worker });
+  } catch (e) {
+    if (e instanceof CopyError && e.status === 404) return viaCounts(copy, client, worker);
+    throw e;
+  }
+}
 async function getStats(ctx) {
   const copy = ctx.copy;
   if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it cannot give statistics.", { retryable: false });
@@ -2356,19 +2420,8 @@ async function getStats(ctx) {
   cache.set(copy, store);
   const hit = store.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.data;
-  const jobFilter = { ...client ? { client: `eq.${client}` } : {}, ...worker ? { worker: `eq.${worker}` } : {} };
-  const receiptFilter = worker ? { worker: `eq.${worker}` } : {};
   try {
-    const [status, jobTotal, jobCounts, receipts] = await Promise.all([
-      copy.status(),
-      copy.count("jobs", jobFilter),
-      Promise.all(JOB_STATUSES2.map((s) => copy.count("jobs", { ...jobFilter, status: `eq.${s}` }))),
-      client ? Promise.resolve(null) : Promise.all([
-        copy.count("receipts", receiptFilter),
-        ...OUTCOMES.map((o) => copy.count("receipts", { ...receiptFilter, overall_status: `eq.${o}` })),
-        copy.count("receipts", { ...receiptFilter, status: "eq.PENDING" })
-      ])
-    ]);
+    const [status, raw] = await Promise.all([copy.status(), readRaw(copy, client, worker)]);
     const data = {
       source: "copy",
       contract: status?.contract ?? null,
@@ -2376,11 +2429,8 @@ async function getStats(ctx) {
       syncedAt: status?.lastRunAt ? new Date(status.lastRunAt).toISOString() : null,
       copiedThrough: status && status.lastJobNumber > 0 ? `job-${status.lastJobNumber}` : null,
       filter: { client, worker },
-      jobs: { total: jobTotal, byStatus: Object.fromEntries(JOB_STATUSES2.map((s, i) => [s, jobCounts[i]])) },
-      receipts: receipts && {
-        total: receipts[0],
-        byOutcome: { VERIFIED: receipts[1], NEEDS_REVISION: receipts[2], INCONCLUSIVE: receipts[3], PENDING: receipts[4] }
-      },
+      jobs: raw.jobs,
+      receipts: raw.receipts,
       notes: [
         "These counts come from a copy of the contract's final reads, refreshed by an indexer. Check `syncedAt`: jobs created since then are not counted yet.",
         "`byOutcome` counts deliveries by the verdict the validators gave. `PENDING` are waiting to be judged. A delivery replaced before it was judged is only in `total`.",
@@ -2407,7 +2457,7 @@ var ROUTES = [
     operationId: "getHealth",
     tag: "System",
     summary: "Liveness",
-    description: "Says the API process is up. Add `?deep=true` to also read the contract once (job-1) and report whether the network answers. A deep check that fails returns 503.",
+    description: "Says the API process is up. Add `?deep=true` to also read the contract once (job-1) and report whether the network answers. A deep check that fails returns 503. With a database copy configured, a deep check also reports how old the copy is and how the last indexer run went (`copy`); a copy that is stale or unreachable never turns the check into a 503, because the contract is the source of truth.",
     pathParams: [],
     chainRead: false,
     deep: true,
@@ -2422,6 +2472,11 @@ var ROUTES = [
           base.checks.chain = "ok";
         } catch {
           throw new ApiError(503, "UPSTREAM_UNAVAILABLE", "The API is running but the GenLayer network did not answer.", { retryable: true });
+        }
+        if (ctx.copy) {
+          const copyHealth = await readCopyHealth(ctx.copy, ctx.now().getTime());
+          base.checks.copy = copyHealth.check;
+          return copyHealth.copy ? { ...base, copy: copyHealth.copy } : base;
         }
       }
       return base;
@@ -2647,7 +2702,13 @@ var hash64n = { type: ["string", "null"], pattern: "^[0-9a-f]{64}$" };
 var JOB_STATUS = ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"];
 var addr = { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" };
 var SCHEMAS = {
-  Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" } } }),
+  Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" }, description: "With `deep=true`: `chain` is `ok`; `copy` (only when a database copy is configured) is `ok`, `stale`, `failing` or `unavailable`." }, copy: obj({
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last wrote the position." },
+    lagSeconds: { type: ["integer", "null"], description: "Seconds since `syncedAt`." },
+    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs hourly)." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    lastRun: { type: ["object", "null"], additionalProperties: false, description: "The newest recorded indexer run. Null when none was recorded.", properties: { ok: { type: "boolean" }, finishedAt: { type: "string", format: "date-time" }, newJobs: { type: "integer" }, refreshedJobs: { type: "integer" }, receipts: { type: "integer" }, failedRows: { type: "integer" }, rounds: { type: "integer" } } }
+  }) }, ["status", "time", "checks"]),
   Meta: obj({
     name: { type: "string", enum: ["Allocyn"] },
     sdkVersion: str2,
@@ -2801,7 +2862,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.5.0",
+      version: "1.6.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2913,7 +2974,7 @@ function renderVerifyError(status, message) {
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.5.0";
+var MCP_SERVER_VERSION = "1.6.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {

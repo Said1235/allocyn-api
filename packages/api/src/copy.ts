@@ -13,13 +13,24 @@ export interface CopyStatus {
 
 export interface CopyJobRow { id: string; job_number: number; title: string; status: string; client: string; worker: string | null; delivery_count: number }
 
+export interface CopyStatsRaw {
+  jobs: { total: number; byStatus: Record<string, number> };
+  receipts: { total: number; byOutcome: Record<string, number> } | null;
+}
+
+export interface CopyRun { ok: boolean; finishedAt: string; newJobs: number; refreshedJobs: number; receipts: number; failedRows: number; rounds: number }
+
 export interface CopyReader {
   /** The public part of the indexer's state, or null when the indexer has never written it. */
   status(): Promise<CopyStatus | null>;
   /** Exact number of rows that match the PostgREST filters, e.g. `{ status: "eq.OPEN", worker: "eq.0x…" }`. */
   count(table: "jobs" | "receipts", filters: Record<string, string>): Promise<number>;
   /** Jobs newest first, one indexed query. `before` keeps only job numbers lower than it. */
-  listJobs(o: { filters: Record<string, string>; before?: number; limit: number }): Promise<CopyJobRow[]>;
+  listJobs(o: { filters: Record<string, string>; before?: number; limit: number; search?: string; updatedSince?: string }): Promise<CopyJobRow[]>;
+  /** All the counts of /v1/stats in one call (the `job_stats` function). A 404 `CopyError` means the migration is not applied. */
+  stats(o: { client: string | null; worker: string | null }): Promise<CopyStatsRaw>;
+  /** The newest indexer run, or null when none was recorded. */
+  lastRun(): Promise<CopyRun | null>;
 }
 
 export class CopyError extends Error {
@@ -49,12 +60,14 @@ export function createCopyReader(o: CopyReaderOptions): CopyReader {
   assertPublicKey(o.key);
   const f = o.fetch ?? fetch;
 
-  async function call(method: "GET" | "HEAD", pathAndQuery: string, count = false): Promise<Response> {
+  // POST exists for one reason: calling the read-only `job_stats` function. Nothing here writes a row.
+  async function call(method: "GET" | "HEAD" | "POST", pathAndQuery: string, count = false, body?: unknown): Promise<Response> {
     let res: Response;
     try {
       res = await f(`${base.origin}/rest/v1/${pathAndQuery}`, {
         method,
-        headers: { apikey: o.key, "User-Agent": "allocyn-api/1", Accept: "application/json", ...(count ? { Prefer: "count=exact" } : {}) },
+        headers: { apikey: o.key, "User-Agent": "allocyn-api/1", Accept: "application/json", ...(count ? { Prefer: "count=exact" } : {}), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(o.timeoutMs ?? 6000),
       });
     } catch (e) {
@@ -79,12 +92,25 @@ export function createCopyReader(o: CopyReaderOptions): CopyReader {
       if (!m) throw new CopyError("The database copy did not return a row count.");
       return Number(m[1]);
     },
-    async listJobs({ filters, before, limit }) {
+    async listJobs({ filters, before, limit, search, updatedSince }) {
       const q = new URLSearchParams({ select: "id,job_number,title,status,client,worker,delivery_count", order: "job_number.desc", limit: String(Math.max(1, Math.floor(limit))), ...filters });
       if (before !== undefined) q.set("job_number", `lt.${Math.floor(before)}`);
+      if (search) q.set("search", `plfts(simple).${search}`);
+      if (updatedSince) q.set("updated_at", `gte.${updatedSince}`);
       const rows = await (await call("GET", `jobs?${q.toString()}`)).json();
       if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
       return rows as CopyJobRow[];
+    },
+    async stats({ client, worker }) {
+      const out = (await (await call("POST", "rpc/job_stats", false, { p_client: client, p_worker: worker })).json()) as CopyStatsRaw | null;
+      const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+      if (!out || !out.jobs || !num(out.jobs.total) || (out.receipts !== null && (!out.receipts || !num(out.receipts.total)))) throw new CopyError("The database copy returned unexpected statistics.");
+      return out;
+    },
+    async lastRun() {
+      const res = await call("GET", "indexer_runs?select=ok,finished_at,new_jobs,refreshed_jobs,receipts,failed_rows,rounds&order=finished_at.desc&limit=1");
+      const r = ((await res.json()) as Array<{ ok: boolean; finished_at: string; new_jobs: number; refreshed_jobs: number; receipts: number; failed_rows: number; rounds: number }>)[0];
+      return r ? { ok: r.ok, finishedAt: new Date(r.finished_at).toISOString(), newJobs: r.new_jobs, refreshedJobs: r.refreshed_jobs, receipts: r.receipts, failedRows: r.failed_rows, rounds: r.rounds } : null;
     },
   };
 }

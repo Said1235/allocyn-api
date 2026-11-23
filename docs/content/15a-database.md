@@ -55,10 +55,12 @@ Row level security is on for every table. The public key can read jobs and recei
 | Part | State |
 |---|---|
 | Tables, indexes and security rules | Applied to a real Supabase project. Checked there: the public role can read jobs and receipts, cannot insert, and cannot see the private table. |
-| Indexer (`npm run index`) | Written and tested against the simulated contract and a stand-in for the Supabase REST API that enforces the same table rules. |
+| Indexer (`npm run index`) | Written and tested against the simulated contract and a stand-in for the Supabase REST API that enforces the same table rules. It also records each run in `indexer_runs`; that write has been tested on the stand-in, and a real run recording a row has **not** been seen yet. |
 | Scheduled run (`.github/workflows/index.yml`) | Runs once an hour, and by hand from the Actions tab. It does nothing until the two secrets exist. |
 | First run on the real project | It recorded which contract and network the database mirrors and found **no jobs**, because the contract had none yet. Copying real jobs into the hosted database has **not** been seen. |
-| `GET /v1/stats` and the MCP tool `get_stats` | Live. Tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API it answered from the real project with the public key: the right contract and refresh time, all zeros because the copy holds no jobs yet. Counting real jobs has **not** been seen. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. |
+| `GET /v1/stats` and the MCP tool `get_stats` | Live. Tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API it answered from the real project with the public key: the right contract and refresh time, all zeros because the copy holds no jobs yet. Counting real jobs has **not** been seen. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Since 1.6.0 it needs two requests, not about thirteen (the `job_stats` function, checked on the hosted database). |
+| Search and `updatedSince` | `GET /v1/jobs?q=…` and `?updatedSince=…`. The search column, the trigger and the public role's rights were checked on the hosted database; real jobs behind the API have **not** been seen. |
+| Copy health | `GET /v1/health?deep=true` reports `checks.copy` and a `copy` object. Tested on the stand-in; the deployed answer is checked below. |
 | Lists from the copy | `GET /v1/jobs?source=copy` and `source=auto`. Tested against a stand-in for the Supabase REST API. On the deployed API the real list request is accepted by the hosted database with the public key, and returns an empty list because the copy holds no jobs yet. Filters and paging on real rows have **not** been seen. The default is still the contract. |
 
 ## How it works
@@ -78,10 +80,12 @@ What it does when something goes wrong:
 
 | Table | Holds | Who can read it |
 |---|---|---|
-| `jobs` | `id` (`job-N`), `job_number`, `title`, `description`, `criteria` (JSON), `client`, `worker` (null until accepted), `status`, `delivery_count`, `receipt_ids`, `terms_hash`, `agreement_hash`, `integrity` (JSON), `synced_at` | Anyone with the public key |
+| `jobs` | `id` (`job-N`), `job_number`, `title`, `description`, `criteria` (JSON), `client`, `worker` (null until accepted), `status`, `delivery_count`, `receipt_ids`, `terms_hash`, `agreement_hash`, `integrity` (JSON), `synced_at`, `updated_at` (moves only when the content changes), `search` (full-text index of title and description) | Anyone with the public key |
 | `receipts` | `id` (`rcpt-N`), `job_id`, `delivery_index`, `worker`, `url`, `status`, `agreement_hash`, `evidence_hash`, `evidence_size`, `overall_status`, `evaluation_requested_by`, `results` (JSON), `synced_at` | Anyone with the public key |
 | `indexer_state` | The position, the last run, the contract address and the network | Anyone with the public key |
 | `indexer_state` (`last_error`) | The last error, which can name rows and database messages | Only the secret key |
+| `indexer_runs` | One row per indexer run: `started_at`, `finished_at`, `ok`, `new_jobs`, `refreshed_jobs`, `receipts`, `failed_rows`, `rounds`, `last_job_number`. The newest 200 are kept. | Anyone with the public key |
+| `indexer_runs` (`error`) | The error text of a failed run | Only the secret key |
 
 The fields match the [REST shapes](rest-reference.html) one to one, in snake case. Addresses are stored in lower case. Every row has `synced_at`: when the indexer last wrote it.
 
@@ -102,6 +106,9 @@ Supabase secret keys are not JWTs, so the indexer sends them in the `apikey` hea
    - `…0002_jobs_receipts.sql`: the three tables, their indexes, row level security and the read-only grants.
    - `…0003_indexer_contract.sql`: the columns that record the contract and the network.
    - `…0004_public_index_status.sql`: lets the public key read the position, the time of the last run, the contract and the network (and no more), which `/v1/stats` reports.
+   - `20261123…0001_job_stats_function.sql`: the function that returns every count in one call.
+   - `20261123…0002_indexer_runs.sql`: the table that records each run.
+   - `20261123…0003_jobs_search_updated.sql` and `…0004_fix_updated_at_trigger.sql`: the search column and `updated_at`. Apply both; the fourth corrects the trigger of the third.
 3. **Create a secret key:** *Project Settings, API Keys, Secret keys*. A key of its own for this use is better than sharing one, because it can be revoked alone.
 4. **Add two secrets to the GitHub repository.** *Settings, Secrets and variables, Actions, Repository secrets* (not *Environment secrets*):
    - `SUPABASE_URL`: the project URL, `https://<ref>.supabase.co`
@@ -119,7 +126,7 @@ To run it from your own machine instead: `SUPABASE_URL=... SUPABASE_SECRET_KEY=.
 
 ## Statistics through the API
 
-`GET /v1/stats` counts in the copy and returns one object. The values below are illustrative.
+`GET /v1/stats` counts in the copy and returns one object. A database function (`job_stats`) returns every count in one call; if the function is not there yet, the API counts one by one and gives the same numbers. The values below are illustrative.
 
 ```json
 {
@@ -158,6 +165,31 @@ curl -s 'https://<your-api>/v1/jobs?source=copy&status=OPEN&limit=20'
 | `auto` | The copy when it works, otherwise the contract (the answer says which). | Clients that want speed but must always get an answer. |
 
 The answer carries `source`, `syncedAt` (when the indexer last ran) and `notes`. `nextCursor` works the same: pass it as `before`. A list from the copy does not contain jobs created or changed since `syncedAt`.
+
+Two filters exist only on the copy, so using either one makes `source` default to `copy`:
+
+```bash
+# Search the title and description. Every word must appear; any language.
+curl -s 'https://<your-api>/v1/jobs?q=logo+animation'
+
+# Only jobs whose content changed since a time (a date and time with a zone).
+curl -s 'https://<your-api>/v1/jobs?updatedSince=2026-11-20T00:00:00Z'
+```
+
+`updatedSince` moves only when a job's content changes. A job that the indexer merely read again does not count, so it is the right filter for a dashboard that wants to sync what changed. With `source=contract` both are refused with `400`, and if the copy is down there is no silent fallback to the contract, because the contract cannot answer them: you get `502`.
+
+## Is the copy healthy?
+
+`GET /v1/health?deep=true` adds, when a copy is configured, `checks.copy` and a `copy` object:
+
+| `checks.copy` | Meaning |
+|---|---|
+| `ok` | The indexer ran in the last three hours and its last run succeeded. |
+| `stale` | No run for more than three hours (or never). Check the Actions tab: GitHub may have paused the schedule. |
+| `failing` | The last run had rows the database refused. |
+| `unavailable` | The copy could not be read. |
+
+`copy.lagSeconds` is the age of the data and `copy.lastRun` shows what the last run did. None of this ever makes the health check fail: the API and the network are what it vouches for, and the contract stays the source of truth. A plain `GET /v1/health` reads nothing from the database.
 
 ## Query it
 

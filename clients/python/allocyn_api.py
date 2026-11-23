@@ -80,9 +80,9 @@ class AllocynApi:
         """Input limits. The limits the contract reports right now (get_limits()), next to the copy this API was built for."""
         return self._get(f"/v1/limits", {})
 
-    def list_jobs(self, *, consistency: Optional[str] = None, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None, client: Optional[str] = None, source: Optional[str] = None, worker: Optional[str] = None) -> Any:
+    def list_jobs(self, *, consistency: Optional[str] = None, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None, client: Optional[str] = None, q: Optional[str] = None, updated_since: Optional[str] = None, source: Optional[str] = None, worker: Optional[str] = None) -> Any:
         """List jobs. Jobs from newest to oldest, with an optional filter by status, client or worker."""
-        return self._get(f"/v1/jobs", {"consistency": consistency, "limit": limit, "before": before, "status": status, "client": client, "source": source, "worker": worker})
+        return self._get(f"/v1/jobs", {"consistency": consistency, "limit": limit, "before": before, "status": status, "client": client, "q": q, "updatedSince": updated_since, "source": source, "worker": worker})
 
     def get_stats(self, *, client: Optional[str] = None, worker: Optional[str] = None) -> Any:
         """Counts and statistics. How many jobs there are in each status, and how many deliveries got each verdict, optionally for one client or one worker."""

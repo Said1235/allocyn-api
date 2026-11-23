@@ -30,6 +30,33 @@ export interface Stats {
 
 const cache = new WeakMap<CopyReader, Map<string, { at: number; data: Stats }>>();
 
+type Raw = Pick<Stats, "jobs" | "receipts">;
+
+/** The old way: one exact count per number. Used when the `job_stats` function is not in the database yet. */
+async function viaCounts(copy: CopyReader, client: string | null, worker: string | null): Promise<Raw> {
+  const jobFilter: Record<string, string> = { ...(client ? { client: `eq.${client}` } : {}), ...(worker ? { worker: `eq.${worker}` } : {}) };
+  const receiptFilter: Record<string, string> = worker ? { worker: `eq.${worker}` } : {};
+  const [jobTotal, jobCounts, receipts] = await Promise.all([
+    copy.count("jobs", jobFilter),
+    Promise.all(JOB_STATUSES.map((s) => copy.count("jobs", { ...jobFilter, status: `eq.${s}` }))),
+    client ? Promise.resolve(null) : Promise.all([
+      copy.count("receipts", receiptFilter),
+      ...OUTCOMES.map((o) => copy.count("receipts", { ...receiptFilter, overall_status: `eq.${o}` })),
+      copy.count("receipts", { ...receiptFilter, status: "eq.PENDING" }),
+    ]),
+  ]);
+  return {
+    jobs: { total: jobTotal, byStatus: Object.fromEntries(JOB_STATUSES.map((s, i) => [s, jobCounts[i]!])) as Stats["jobs"]["byStatus"] },
+    receipts: receipts && { total: receipts[0]!, byOutcome: { VERIFIED: receipts[1]!, NEEDS_REVISION: receipts[2]!, INCONCLUSIVE: receipts[3]!, PENDING: receipts[4]! } },
+  };
+}
+
+/** One call to the `job_stats` function; if the database does not have it (404), the counts are made one by one. */
+async function readRaw(copy: CopyReader, client: string | null, worker: string | null): Promise<Raw> {
+  try { return (await copy.stats({ client, worker })) as Raw; }
+  catch (e) { if (e instanceof CopyError && e.status === 404) return viaCounts(copy, client, worker); throw e; }
+}
+
 export async function getStats(ctx: Ctx): Promise<Stats> {
   const copy = ctx.copy;
   if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it cannot give statistics.", { retryable: false });
@@ -44,30 +71,16 @@ export async function getStats(ctx: Ctx): Promise<Stats> {
   const hit = store.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.data;
 
-  const jobFilter: Record<string, string> = { ...(client ? { client: `eq.${client}` } : {}), ...(worker ? { worker: `eq.${worker}` } : {}) };
-  const receiptFilter: Record<string, string> = worker ? { worker: `eq.${worker}` } : {};
   try {
-    const [status, jobTotal, jobCounts, receipts] = await Promise.all([
-      copy.status(),
-      copy.count("jobs", jobFilter),
-      Promise.all(JOB_STATUSES.map((s) => copy.count("jobs", { ...jobFilter, status: `eq.${s}` }))),
-      client ? Promise.resolve(null) : Promise.all([
-        copy.count("receipts", receiptFilter),
-        ...OUTCOMES.map((o) => copy.count("receipts", { ...receiptFilter, overall_status: `eq.${o}` })),
-        copy.count("receipts", { ...receiptFilter, status: "eq.PENDING" }),
-      ]),
-    ]);
+    const [status, raw] = await Promise.all([copy.status(), readRaw(copy, client, worker)]);
     const data: Stats = {
       source: "copy",
       contract: status?.contract ?? null, network: status?.network ?? null,
       syncedAt: status?.lastRunAt ? new Date(status.lastRunAt).toISOString() : null,
       copiedThrough: status && status.lastJobNumber > 0 ? `job-${status.lastJobNumber}` : null,
       filter: { client, worker },
-      jobs: { total: jobTotal, byStatus: Object.fromEntries(JOB_STATUSES.map((s, i) => [s, jobCounts[i]!])) as Stats["jobs"]["byStatus"] },
-      receipts: receipts && {
-        total: receipts[0]!,
-        byOutcome: { VERIFIED: receipts[1]!, NEEDS_REVISION: receipts[2]!, INCONCLUSIVE: receipts[3]!, PENDING: receipts[4]! },
-      },
+      jobs: raw.jobs,
+      receipts: raw.receipts,
       notes: [
         "These counts come from a copy of the contract's final reads, refreshed by an indexer. Check `syncedAt`: jobs created since then are not counted yet.",
         "`byOutcome` counts deliveries by the verdict the validators gave. `PENDING` are waiting to be judged. A delivery replaced before it was judged is only in `total`.",

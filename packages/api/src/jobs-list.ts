@@ -47,7 +47,7 @@ async function listFromCopy(ctx: Ctx, q: Record<string, string | undefined>, lim
   try {
     const [state, rows] = await Promise.all([
       copy.status(),
-      copy.listJobs({ filters, ...(q.before ? { before: Number(q.before.slice(4)) } : {}), limit: limit + 1 }),
+      copy.listJobs({ filters, ...(q.before ? { before: Number(q.before.slice(4)) } : {}), ...(q.q ? { search: q.q.trim() } : {}), ...(q.updatedSince ? { updatedSince: new Date(q.updatedSince).toISOString() } : {}), limit: limit + 1 }),
     ]);
     const page = rows.slice(0, limit);
     const items: Item[] = page.map((r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count }));
@@ -69,12 +69,16 @@ async function listFromCopy(ctx: Ctx, q: Record<string, string | undefined>, lim
 export async function listJobs(ctx: Ctx, consistency: "latest" | "final") {
   const q = parseQuery({ query: LIST_QUERY }, ctx.query);
   const limit = q.limit ? Number(q.limit) : 20;
-  const source = q.source ?? "contract";
+  // Search and "changed since" exist only in the copy, so asking for either means the copy, unless the caller said otherwise.
+  const needsCopy = Boolean(q.q || q.updatedSince);
+  const source = q.source ?? (needsCopy ? "copy" : "contract");
+  if (needsCopy && source === "contract") throw new ApiError(400, "INVALID_ARGUMENT", `${q.q ? "q" : "updatedSince"} needs the database copy: use source=copy or source=auto.`, { field: q.q ? "q" : "updatedSince" });
   if (source === "copy") return listFromCopy(ctx, q, limit);
   if (source === "auto" && ctx.copy) {
     try { return await listFromCopy(ctx, q, limit); }
-    catch (e) { if (!(e instanceof ApiError) || e.status !== 502) throw e; /* the copy is down: the contract answers */ }
+    catch (e) { if (!(e instanceof ApiError) || e.status !== 502 || needsCopy) throw e; /* the copy is down: the contract answers, unless it cannot do what was asked */ }
   }
+  if (needsCopy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it cannot search or filter by updatedSince.", { retryable: false });
   const fellBack = source === "auto";
   const client = ctx.client(consistency);
   const latest = await latestJobNumber(client, ctx.now().getTime());
@@ -106,6 +110,8 @@ export const LIST_QUERY: QueryParam[] = [
   { name: "before", description: "Cursor: only jobs older than this id. Use the `nextCursor` of the previous page.", schema: { type: "string", pattern: "^job-[1-9][0-9]{0,8}$" }, example: "job-10" },
   { name: "status", description: "Only jobs in this status.", schema: { type: "string", enum: ["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "INCONCLUSIVE"] }, example: "VERIFIED" },
   { name: "client", description: "Only jobs created by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "a1".repeat(20) },
+  { name: "q", description: "Search the title and description (words, in any language; every word must appear). Needs the database copy, so `source` defaults to `copy` when this is set.", schema: { type: "string", minLength: 2, maxLength: 100 }, example: "logo" },
+  { name: "updatedSince", description: "Only jobs whose content changed at or after this time (date and time with a zone). A job that was only re-read does not count. Needs the database copy, so `source` defaults to `copy` when this is set.", schema: { type: "string", format: "date-time" }, example: "2026-11-20T00:00:00Z" },
   { name: "source", description: "Where the list is read from: `contract` (default, live, slower), `copy` (the database copy: one indexed query, final data as of `syncedAt`) or `auto` (the copy when it is configured and reachable, else the contract).", schema: { type: "string", enum: ["contract", "copy", "auto"] }, example: "copy" },
   { name: "worker", description: "Only jobs accepted by this address.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) },
 ];

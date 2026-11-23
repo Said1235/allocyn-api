@@ -79,8 +79,33 @@ test("without a database copy the endpoint says so, and is not retryable", async
 test("the public key goes in `apikey` only, never in Authorization or the URL", async () => {
   clock += 60_000; db.log.length = 0;
   await getJson(urlWith, "/v1/stats");
-  assert.ok(db.log.length >= 12);
-  for (const l of db.log) { assert.equal(l.apikey, KEY); assert.equal(l.authorization, undefined); assert.ok(!l.target.includes(KEY)); assert.match(l.ua ?? "", /^allocyn-api/); assert.ok(l.method === "GET" || l.method === "HEAD", "the API function never writes"); }
+  assert.equal(db.log.length, 2, "one call for the status, one for all the counts");
+  for (const l of db.log) {
+    assert.equal(l.apikey, KEY); assert.equal(l.authorization, undefined); assert.ok(!l.target.includes(KEY)); assert.match(l.ua ?? "", /^allocyn-api/);
+    // The only POST allowed is the read-only job_stats function. Nothing the API function sends writes a row.
+    assert.ok(l.method === "GET" || l.method === "HEAD" || (l.method === "POST" && l.target === "/rest/v1/rpc/job_stats"), `unexpected ${l.method} ${l.target}`);
+  }
+});
+
+test("without the job_stats function in the database, the counts are made one by one and are the same", async () => {
+  clock += 60_000; db.log.length = 0; db.rpcEnabled = false;
+  try {
+    const { res, json } = await getJson(urlWith, "/v1/stats");
+    assert.equal(res.status, 200);
+    assert.deepEqual(json.data.jobs, { total: 5, byStatus: { OPEN: 1, IN_PROGRESS: 1, VERIFIED: 2, NEEDS_REVISION: 1, INCONCLUSIVE: 0 } });
+    assert.deepEqual(json.data.receipts, { total: 6, byOutcome: { VERIFIED: 2, NEEDS_REVISION: 2, INCONCLUSIVE: 0, PENDING: 1 } });
+    assert.ok(db.log.length >= 12, "the old path");
+    for (const l of db.log) assert.ok(l.method === "GET" || l.method === "HEAD" || l.target === "/rest/v1/rpc/job_stats");
+  } finally { db.rpcEnabled = true; }
+});
+
+test("the function path gives the same answer for a worker and for a client", async () => {
+  clock += 60_000;
+  const w = (await getJson(urlWith, `/v1/stats?worker=${B}`)).json.data;
+  assert.deepEqual(w.jobs, { total: 3, byStatus: { OPEN: 0, IN_PROGRESS: 1, VERIFIED: 1, NEEDS_REVISION: 1, INCONCLUSIVE: 0 } });
+  assert.deepEqual(w.receipts, { total: 5, byOutcome: { VERIFIED: 1, NEEDS_REVISION: 2, INCONCLUSIVE: 0, PENDING: 1 } });
+  const c = (await getJson(urlWith, `/v1/stats?client=${A}`)).json.data;
+  assert.equal(c.jobs.total, 3); assert.equal(c.receipts, null);
 });
 
 test("answers are cached for 30 seconds, so a busy page does not hit the database every time", async () => {
