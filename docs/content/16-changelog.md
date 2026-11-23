@@ -23,7 +23,8 @@ The routes and shapes of 1.0.0 to 1.5.0 did not change. Everything below is adde
 
 **Not verified yet**
 - The indexer writing its run records has been tested against the stand-in, and the table's permissions on the hosted database. A real hourly run writing a row has not been seen yet.
-- `q` and `updatedSince` were checked on the hosted database in SQL (the search column, the trigger and the public role's rights) and through a stand-in for the REST layer. Real jobs behind the deployed API are still missing, because the contract has none.
+- On the deployed API, the hosted database's logs show `POST /rest/v1/rpc/job_stats` and the search request (`search=plfts(simple).…`) both answered `200`, so the function and the search filter are accepted. The lists came back empty and the counts zero, because the copy holds no jobs. Search, `updatedSince` and the trigger were checked on real rows only with two temporary test rows in SQL (deleted afterwards), not through the API.
+- When the deployed deep health check was first run, it answered `checks.copy: "stale"`: the last indexer run was about five hours old, so the hourly schedule had not fired since then. That is the check doing its job. Why the schedule did not run was not investigated from here.
 
 ## 1.5.0 (API)
 
