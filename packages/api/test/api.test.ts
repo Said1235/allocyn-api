@@ -47,8 +47,9 @@ before(async () => {
   fakeDb = await startFakePostgrest("sb_publishable_test_key");
   fakeDb.publicRole = true;
   fakeDb.state.last_job_number = 2; fakeDb.state.last_run_at = "2026-11-19T10:00:00.000Z"; fakeDb.state.contract_address = sim.contractAddress ?? "0x" + "5".repeat(40); fakeDb.state.network = "studionet";
-  fakeDb.jobs.set("job-1", { id: "job-1", status: "VERIFIED", client: ALICE, worker: BOB });
-  fakeDb.jobs.set("job-2", { id: "job-2", status: "OPEN", client: ALICE, worker: null });
+  fakeDb.jobs.set("job-1", { id: "job-1", title: "Logo files", status: "VERIFIED", client: ALICE, worker: BOB, delivery_count: 1 });
+  fakeDb.jobs.set("job-2", { id: "job-2", title: "Second", status: "OPEN", client: ALICE, worker: null, delivery_count: 0 });
+  fakeDb.events.push({ id: 1, created_at: "2026-11-19T09:00:00.000Z", job_id: "job-1", type: "delivery_evaluated", from_status: null, to_status: null, client: ALICE, worker: BOB, data: { receiptId: "rcpt-1", deliveryIndex: 1, outcome: "VERIFIED" } });
   fakeDb.receipts.set("rcpt-1", { id: "rcpt-1", job_id: "job-1", worker: BOB, status: "EVALUATED", overall_status: "VERIFIED" });
   cfg = mkCfg();
   const st = await start(cfg); server = st.s; base = st.url;
@@ -58,7 +59,7 @@ after(async () => { server.close(); await fakeDb?.close(); });
 
 const SAMPLE: Record<string, string> = {
   "/v1/health": "/v1/health", "/v1/meta": "/v1/meta", "/v1/limits": "/v1/limits",
-  "/v1/jobs": "/v1/jobs", "/v1/stats": "/v1/stats",
+  "/v1/jobs": "/v1/jobs", "/v1/stats": "/v1/stats", "/v1/events": "/v1/events", "/v1/addresses/{address}": "/v1/addresses/" + BOB,
   "/v1/jobs/{jobId}": "/v1/jobs/job-1",
   "/v1/jobs/{jobId}/proof": "/v1/jobs/job-1/proof",
   "/v1/jobs/{jobId}/wait": "/v1/jobs/job-1/wait",

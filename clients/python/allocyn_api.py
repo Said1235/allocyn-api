@@ -88,6 +88,14 @@ class AllocynApi:
         """Counts and statistics. How many jobs there are in each status, and how many deliveries got each verdict, optionally for one client or one worker."""
         return self._get(f"/v1/stats", {"client": client, "worker": worker})
 
+    def list_events(self, *, after: Optional[int] = None, limit: Optional[int] = None, job: Optional[str] = None, type: Optional[str] = None, worker: Optional[str] = None, client: Optional[str] = None, wait: Optional[int] = None) -> Any:
+        """Feed of job events. What changed in the jobs, oldest first: a job was created or accepted, a delivery came in or got its verdict, a status moved."""
+        return self._get(f"/v1/events", {"after": after, "limit": limit, "job": job, "type": type, "worker": worker, "client": client, "wait": wait})
+
+    def get_address_record(self, address: str) -> Any:
+        """What the copy holds about an address. For one wallet address: how many jobs it created (as client) and accepted (as worker) in each status, how many deliveries it made and the verdicts they got, and its five newest jobs on each side."""
+        return self._get(f"/v1/addresses/{_q(address)}", {})
+
     def get_job(self, job_id: str, *, consistency: Optional[str] = None) -> Any:
         """Read a job. The job's terms, parties, status and receipt ids, read from the contract."""
         return self._get(f"/v1/jobs/{_q(job_id)}", {"consistency": consistency})

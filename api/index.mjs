@@ -347,8 +347,8 @@ function termsHash(terms) {
     })
   );
 }
-function addressBytesHex(address2) {
-  const h = address2.trim().toLowerCase().replace(/^0x/, "");
+function addressBytesHex(address3) {
+  const h = address3.trim().toLowerCase().replace(/^0x/, "");
   if (!/^[0-9a-f]{40}$/.test(h)) throw new Error("Not a 20-byte address.");
   return h;
 }
@@ -1201,11 +1201,11 @@ function snapshotFromTransaction(tx) {
   return { statusName, failureMessage, returned };
 }
 function createSdkGateway(clients, contractAddress) {
-  const address2 = contractAddress;
+  const address3 = contractAddress;
   return {
     contractAddress,
     call: (method, args, options) => clients.reader.readContract({
-      address: address2,
+      address: address3,
       functionName: method,
       args: [...args],
       // genlayer-js 1.1.8 default is "latest-nonfinal". "latest-final" is its TransactionHashVariant.LATEST_FINAL.
@@ -1213,7 +1213,7 @@ function createSdkGateway(clients, contractAddress) {
     }),
     send: async (method, args) => {
       if (!clients.writer) throw new Error("No wallet client is ready, so nothing was sent.");
-      return clients.writer.writeContract({ address: address2, functionName: method, args: [...args], value: 0n });
+      return clients.writer.writeContract({ address: address3, functionName: method, args: [...args], value: 0n });
     },
     getTx: async (hash) => snapshotFromTransaction(await clients.reader.getTransaction({ hash }))
   };
@@ -1795,6 +1795,16 @@ function createCopyReader(o) {
       if (!out || !out.jobs || !num(out.jobs.total) || out.receipts !== null && (!out.receipts || !num(out.receipts.total))) throw new CopyError("The database copy returned unexpected statistics.");
       return out;
     },
+    async listEvents({ filters, after, limit }) {
+      const q = new URLSearchParams({ select: "id,created_at,job_id,type,from_status,to_status,client,worker,data", limit: String(Math.max(1, Math.floor(limit))), ...filters });
+      if (after !== void 0) {
+        q.set("id", `gt.${Math.floor(after)}`);
+        q.set("order", "id.asc");
+      } else q.set("order", "id.desc");
+      const rows = await (await call("GET", `job_events?${q.toString()}`)).json();
+      if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
+      return after !== void 0 ? rows : rows.reverse();
+    },
     async lastRun() {
       const res = await call("GET", "indexer_runs?select=ok,finished_at,new_jobs,refreshed_jobs,receipts,failed_rows,rounds&order=finished_at.desc&limit=1");
       const r = (await res.json())[0];
@@ -2171,6 +2181,7 @@ async function latestJobNumber(client, now) {
   latestCache.set(client, { n, at: now });
   return n;
 }
+var rowToSummary = (r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count });
 async function listFromCopy(ctx, q, limit) {
   const copy = ctx.copy;
   if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so source=copy is not available. Use source=contract.", { retryable: false });
@@ -2185,7 +2196,7 @@ async function listFromCopy(ctx, q, limit) {
       copy.listJobs({ filters, ...q.before ? { before: Number(q.before.slice(4)) } : {}, ...q.q ? { search: q.q.trim() } : {}, ...q.updatedSince ? { updatedSince: new Date(q.updatedSince).toISOString() } : {}, limit: limit + 1 })
     ]);
     const page = rows.slice(0, limit);
-    const items = page.map((r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count }));
+    const items = page.map(rowToSummary);
     return {
       items,
       nextCursor: rows.length > limit && page.length ? page[page.length - 1].id : null,
@@ -2255,7 +2266,7 @@ var LIST_QUERY = [
 ];
 
 // packages/api/src/copy-health.ts
-var STALE_AFTER_SECONDS = 3 * 3600;
+var STALE_AFTER_SECONDS = 3600;
 async function readCopyHealth(copy, nowMs) {
   try {
     const [status, run] = await Promise.all([copy.status(), copy.lastRun().catch((e) => {
@@ -2445,8 +2456,112 @@ async function getStats(ctx) {
   }
 }
 
+// packages/api/src/events.ts
+var TYPES = ["job_created", "job_accepted", "delivery_submitted", "delivery_evaluated", "status_changed"];
+var ADDR = "^0x[0-9a-fA-F]{40}$";
+var EVENTS_QUERY = [
+  { name: "after", description: "Cursor: only events with a higher id. Use the `cursor` of the previous answer. Leave it out to get the newest events.", schema: { type: "integer", minimum: 0 }, example: "0" },
+  { name: "limit", description: "How many events to return, 1 to 100 (default 50).", schema: { type: "integer", minimum: 1, maximum: 100 }, example: "50" },
+  { name: "job", description: "Only events of this job.", schema: { type: "string", pattern: "^job-[1-9][0-9]{0,8}$" }, example: "job-1" },
+  { name: "type", description: "Only this kind of event.", schema: { type: "string", enum: [...TYPES] }, example: "status_changed" },
+  { name: "worker", description: "Only events of jobs accepted by this address.", schema: { type: "string", pattern: ADDR }, example: "0x" + "b2".repeat(20) },
+  { name: "client", description: "Only events of jobs created by this address.", schema: { type: "string", pattern: ADDR }, example: "0x" + "a1".repeat(20) },
+  { name: "wait", description: "Seconds to wait for a new event when there is none yet, 0 to 25 (default 0). The server may wait less: it always answers before `REQUEST_TIMEOUT_MS`.", schema: { type: "integer", minimum: 0, maximum: 25 }, example: "15" }
+];
+var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+var POLL_MS_MIN = 2e3;
+async function getEvents(ctx) {
+  const copy = ctx.copy;
+  if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it has no event feed.", { retryable: false });
+  const q = parseQuery({ query: EVENTS_QUERY }, ctx.query);
+  const limit = q.limit ? Number(q.limit) : 50;
+  const after = q.after !== void 0 ? Number(q.after) : void 0;
+  const filters = {
+    ...q.job ? { job_id: `eq.${q.job}` } : {},
+    ...q.type ? { type: `eq.${q.type}` } : {},
+    ...q.worker ? { worker: `eq.${q.worker.toLowerCase()}` } : {},
+    ...q.client ? { client: `eq.${q.client.toLowerCase()}` } : {}
+  };
+  const waitMs = Math.max(0, Math.min((q.wait ? Number(q.wait) : 0) * 1e3, ctx.timeoutMs - 2500));
+  const started = Date.now();
+  try {
+    let rows = await copy.listEvents({ filters, ...after !== void 0 ? { after } : {}, limit });
+    let cursor = after ?? 0;
+    const pollMs = Math.max(ctx.pollMs, POLL_MS_MIN);
+    while (!rows.length && Date.now() - started + pollMs < waitMs) {
+      await sleep2(pollMs);
+      rows = await copy.listEvents({ filters, after: cursor, limit });
+    }
+    if (rows.length) cursor = rows[rows.length - 1].id;
+    const state = await copy.status();
+    return {
+      items: rows.map((r) => ({ id: r.id, type: r.type, jobId: r.job_id, detectedAt: new Date(r.created_at).toISOString(), fromStatus: r.from_status, toStatus: r.to_status, client: r.client, worker: r.worker, data: r.data })),
+      cursor,
+      source: "copy",
+      syncedAt: state?.lastRunAt ? new Date(state.lastRunAt).toISOString() : null,
+      waitedSeconds: Math.round((Date.now() - started) / 100) / 10,
+      notes: [
+        "`detectedAt` is when the indexer saw the change, not when it happened on the network. Nothing newer than `syncedAt` is here.",
+        "Pass `cursor` as `after` to continue. Events are kept, so a client that was away can catch up. Nothing is pushed: ask again.",
+        "To rely on a job's state, read the job."
+      ]
+    };
+  } catch (e) {
+    if (e instanceof CopyError) throw new ApiError(502, "UPSTREAM_UNAVAILABLE", "The database copy did not answer. Try again later.", { retryable: true });
+    throw e;
+  }
+}
+
+// packages/api/src/addresses.ts
+var TTL_MS2 = 3e4;
+var RECENT = 5;
+var cache2 = /* @__PURE__ */ new WeakMap();
+async function getAddressRecord(ctx) {
+  const copy = ctx.copy;
+  if (!copy) throw new ApiError(503, "COPY_UNAVAILABLE", "This server has no database copy configured, so it has no address records.", { retryable: false });
+  if (!/^0x[0-9a-fA-F]{40}$/.test(ctx.params.address ?? "")) throw new ApiError(400, "INVALID_ARGUMENT", "address is not valid. A wallet address: 0x followed by 40 hex characters.", { field: "address" });
+  const address3 = ctx.params.address.toLowerCase();
+  const now = ctx.now().getTime();
+  const store = cache2.get(copy) ?? /* @__PURE__ */ new Map();
+  cache2.set(copy, store);
+  const hit = store.get(address3);
+  if (hit && now - hit.at < TTL_MS2) return hit.data;
+  try {
+    const [status, asWorker, asClient, recentWorker, recentClient] = await Promise.all([
+      copy.status(),
+      readRaw(copy, null, address3),
+      readRaw(copy, address3, null),
+      copy.listJobs({ filters: { worker: `eq.${address3}` }, limit: RECENT }),
+      copy.listJobs({ filters: { client: `eq.${address3}` }, limit: RECENT })
+    ]);
+    const data = {
+      address: address3,
+      source: "copy",
+      contract: status?.contract ?? null,
+      network: status?.network ?? null,
+      syncedAt: status?.lastRunAt ? new Date(status.lastRunAt).toISOString() : null,
+      copiedThrough: status && status.lastJobNumber > 0 ? `job-${status.lastJobNumber}` : null,
+      asWorker: { jobs: asWorker.jobs, deliveries: asWorker.receipts },
+      asClient: { jobs: asClient.jobs },
+      recent: { asWorker: recentWorker.map(rowToSummary), asClient: recentClient.map(rowToSummary) },
+      notes: [
+        "These are counts from a copy of the contract's final reads, as of `syncedAt`. They are not a score, a ranking or a guarantee of anything.",
+        "A few jobs say little. Read the jobs themselves before relying on a record.",
+        "`byOutcome` counts deliveries by the verdict the validators gave. `PENDING` are waiting to be judged. A delivery replaced before it was judged is only in `total`.",
+        "An address that is not in the copy gets all zeros: it may be unused, or simply newer than `syncedAt`."
+      ]
+    };
+    store.set(address3, { at: now, data });
+    return data;
+  } catch (e) {
+    if (e instanceof CopyError) throw new ApiError(502, "UPSTREAM_UNAVAILABLE", "The database copy did not answer. Try again later.", { retryable: true });
+    throw e;
+  }
+}
+
 // packages/api/src/routes.ts
 var jobId = { name: "jobId", description: 'Job id, e.g. "job-1". Ids are assigned by the contract: never invent one.', schema: { type: "string", pattern: "^job-[1-9][0-9]*$" }, example: "job-1" };
+var address2 = { name: "address", description: "A wallet address: 0x followed by 40 hex characters, in any letter case.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) };
 var receiptId = { name: "receiptId", description: 'Receipt id, e.g. "rcpt-1".', schema: { type: "string", pattern: "^rcpt-[1-9][0-9]*$" }, example: "rcpt-1" };
 var deliveryIndex = { name: "deliveryIndex", description: "1-based delivery number within the job.", schema: { type: "integer", minimum: 1 }, example: "1" };
 var txHash = { name: "txHash", description: "GenLayer transaction hash: 0x followed by 64 hex characters.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{64}$" }, example: "0x" + "ab".repeat(32) };
@@ -2539,6 +2654,35 @@ var ROUTES = [
     schemaRef: "Stats",
     errors: [400, 429, 502, 503],
     handler: async (ctx) => getStats(ctx)
+  },
+  {
+    method: "GET",
+    path: "/v1/events",
+    operationId: "listEvents",
+    tag: "Jobs",
+    summary: "Feed of job events",
+    description: "What changed in the jobs, oldest first: a job was created or accepted, a delivery came in or got its verdict, a status moved. Cursor based: pass the `cursor` of one answer as `after` in the next, and add `wait` (up to 25 s) to hold the request until something new arrives. Events are stored, so a client that was away can catch up. Read from the optional database copy, so `detectedAt` is when the indexer saw the change, not when it happened on the network. Nothing is pushed and there are no webhooks. `503 COPY_UNAVAILABLE` on a server with no copy.",
+    pathParams: [],
+    query: EVENTS_QUERY,
+    chainRead: false,
+    cache: "no-store",
+    schemaRef: "EventFeed",
+    errors: [400, 429, 502, 503],
+    handler: async (ctx) => getEvents(ctx)
+  },
+  {
+    method: "GET",
+    path: "/v1/addresses/{address}",
+    operationId: "getAddressRecord",
+    tag: "Jobs",
+    summary: "What the copy holds about an address",
+    description: "For one wallet address: how many jobs it created (as client) and accepted (as worker) in each status, how many deliveries it made and the verdicts they got, and its five newest jobs on each side. Counts only: no score, no ranking and no guarantee. Read from the optional database copy, so it is as old as `syncedAt`. `503 COPY_UNAVAILABLE` on a server with no copy. Answers are cached for 30 seconds.",
+    pathParams: [address2],
+    chainRead: false,
+    cache: "short",
+    schemaRef: "AddressRecord",
+    errors: [400, 429, 502, 503],
+    handler: async (ctx) => getAddressRecord(ctx)
   },
   {
     method: "GET",
@@ -2705,7 +2849,7 @@ var SCHEMAS = {
   Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" }, description: "With `deep=true`: `chain` is `ok`; `copy` (only when a database copy is configured) is `ok`, `stale`, `failing` or `unavailable`." }, copy: obj({
     syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last wrote the position." },
     lagSeconds: { type: ["integer", "null"], description: "Seconds since `syncedAt`." },
-    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs hourly)." },
+    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs about every ten minutes)." },
     copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
     lastRun: { type: ["object", "null"], additionalProperties: false, description: "The newest recorded indexer run. Null when none was recorded.", properties: { ok: { type: "boolean" }, finishedAt: { type: "string", format: "date-time" }, newJobs: { type: "integer" }, refreshedJobs: { type: "integer" }, receipts: { type: "integer" }, failedRows: { type: "integer" }, rounds: { type: "integer" } } }
   }) }, ["status", "time", "checks"]),
@@ -2789,6 +2933,36 @@ var SCHEMAS = {
     receipts: { oneOf: [obj({ total: int3, byOutcome: obj({ VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3, PENDING: int3 }) }), { type: "null" }], description: "Null when filtering by client." },
     notes: { type: "array", items: str2 }
   }),
+  AddressRecord: obj({
+    address: addr,
+    source: { type: "string", enum: ["copy"] },
+    contract: { type: ["string", "null"] },
+    network: { type: ["string", "null"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    asWorker: obj({ jobs: obj({ total: int3, byStatus: obj({ OPEN: int3, IN_PROGRESS: int3, VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3 }) }), deliveries: obj({ total: int3, byOutcome: obj({ VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3, PENDING: int3 }) }) }),
+    asClient: obj({ jobs: obj({ total: int3, byStatus: obj({ OPEN: int3, IN_PROGRESS: int3, VERIFIED: int3, NEEDS_REVISION: int3, INCONCLUSIVE: int3 }) }) }),
+    recent: obj({ asWorker: { type: "array", items: ref("JobSummary") }, asClient: { type: "array", items: ref("JobSummary") } }),
+    notes: { type: "array", items: str2 }
+  }),
+  EventFeed: obj({
+    items: { type: "array", items: obj({
+      id: int3,
+      type: { type: "string", enum: ["job_created", "job_accepted", "delivery_submitted", "delivery_evaluated", "status_changed"] },
+      jobId: { type: "string", pattern: "^job-[1-9][0-9]*$" },
+      detectedAt: { type: "string", format: "date-time", description: "When the indexer saw the change, not when it happened on the network." },
+      fromStatus: { type: ["string", "null"], enum: [...JOB_STATUS, null] },
+      toStatus: { type: ["string", "null"], enum: [...JOB_STATUS, null] },
+      client: addr,
+      worker: { oneOf: [addr, { type: "null" }] },
+      data: { type: "object", additionalProperties: true, description: "Extra facts of the event, e.g. `deliveryCount`, or `receiptId`, `deliveryIndex` and `outcome` for a verdict." }
+    }) },
+    cursor: { ...int3, description: "Pass as `after` to get what comes next." },
+    source: { type: "string", enum: ["copy"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran. No event after it is here." },
+    waitedSeconds: { type: "number" },
+    notes: { type: "array", items: str2 }
+  }),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -2862,7 +3036,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.6.0",
+      version: "1.7.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -2974,7 +3148,7 @@ function renderVerifyError(status, message) {
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.6.0";
+var MCP_SERVER_VERSION = "1.7.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {

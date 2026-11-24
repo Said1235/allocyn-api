@@ -1,8 +1,8 @@
 import { CopyError } from "./copy.ts";
 import type { CopyReader, CopyRun } from "./copy.ts";
 
-/** The indexer runs hourly (and GitHub may start it late), so three hours without a run means something is wrong. */
-export const STALE_AFTER_SECONDS = 3 * 3600;
+/** The indexer runs about every ten minutes (and GitHub may start it late), so an hour without a run means something is wrong. */
+export const STALE_AFTER_SECONDS = 3600;
 
 export interface CopyHealth {
   syncedAt: string | null;

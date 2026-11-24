@@ -18,6 +18,8 @@ export interface CopyStatsRaw {
   receipts: { total: number; byOutcome: Record<string, number> } | null;
 }
 
+export interface CopyEventRow { id: number; created_at: string; job_id: string; type: string; from_status: string | null; to_status: string | null; client: string; worker: string | null; data: Record<string, unknown> }
+
 export interface CopyRun { ok: boolean; finishedAt: string; newJobs: number; refreshedJobs: number; receipts: number; failedRows: number; rounds: number }
 
 export interface CopyReader {
@@ -29,6 +31,8 @@ export interface CopyReader {
   listJobs(o: { filters: Record<string, string>; before?: number; limit: number; search?: string; updatedSince?: string }): Promise<CopyJobRow[]>;
   /** All the counts of /v1/stats in one call (the `job_stats` function). A 404 `CopyError` means the migration is not applied. */
   stats(o: { client: string | null; worker: string | null }): Promise<CopyStatsRaw>;
+  /** Job events in ascending id order. With `after`: those with a higher id. Without it: the newest `limit` of them. */
+  listEvents(o: { filters: Record<string, string>; after?: number; limit: number }): Promise<CopyEventRow[]>;
   /** The newest indexer run, or null when none was recorded. */
   lastRun(): Promise<CopyRun | null>;
 }
@@ -106,6 +110,13 @@ export function createCopyReader(o: CopyReaderOptions): CopyReader {
       const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
       if (!out || !out.jobs || !num(out.jobs.total) || (out.receipts !== null && (!out.receipts || !num(out.receipts.total)))) throw new CopyError("The database copy returned unexpected statistics.");
       return out;
+    },
+    async listEvents({ filters, after, limit }) {
+      const q = new URLSearchParams({ select: "id,created_at,job_id,type,from_status,to_status,client,worker,data", limit: String(Math.max(1, Math.floor(limit))), ...filters });
+      if (after !== undefined) { q.set("id", `gt.${Math.floor(after)}`); q.set("order", "id.asc"); } else q.set("order", "id.desc");
+      const rows = await (await call("GET", `job_events?${q.toString()}`)).json();
+      if (!Array.isArray(rows)) throw new CopyError("The database copy returned an unexpected answer.");
+      return (after !== undefined ? rows : rows.reverse()) as CopyEventRow[];
     },
     async lastRun() {
       const res = await call("GET", "indexer_runs?select=ok,finished_at,new_jobs,refreshed_jobs,receipts,failed_rows,rounds&order=finished_at.desc&limit=1");

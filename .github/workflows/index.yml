@@ -1,10 +1,10 @@
 name: Index
 
-# Copies the contract's jobs and receipts into the Supabase tables, about once an hour.
+# Copies the contract's jobs and receipts into the Supabase tables, about every ten minutes (GitHub may start a run late).
 # The secret key lives only in this repository's secrets. The public API function never sees it.
 on:
   schedule:
-    - cron: "7 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:

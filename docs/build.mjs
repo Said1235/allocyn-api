@@ -100,7 +100,7 @@ const DIAGRAMS = {
   </svg>`,
   copy: `<svg viewBox="0 0 760 250" role="img" aria-label="Where the data goes: the indexer reads the Allocyn contract with final reads and writes jobs and receipts into a Supabase Postgres database using a secret key. Anyone with the public key can read the database. The API reads jobs from the contract and the statistics from the copy.">${DEFS}
     ${box(10, 30, 170, 56, "Allocyn contract", "", "GenLayer Studionet")}${edge("M180 58H262")}${lbl(221, 50, "final reads")}
-    ${box(264, 30, 170, 56, "Indexer", "gold", "hourly, read-only")}${edge("M434 58H512")}${lbl(473, 50, "writes")}
+    ${box(264, 30, 170, 56, "Indexer", "gold", "every 10 min, read-only")}${edge("M434 58H512")}${lbl(473, 50, "writes")}
     ${box(514, 30, 236, 56, "Supabase Postgres", "", "row level security on")}
     ${box(264, 160, 170, 56, "Allocyn API", "ok", "jobs from the contract")}${edge("M95 86V188H264")}${lbl(92, 140, "reads", "start")}
     ${edge("M570 86V122H349V160")}${lbl(460, 114, "counts (/v1/stats)")}

@@ -5,7 +5,28 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.6.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.7.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.7.0 (API)
+
+The routes and shapes of 1.0.0 to 1.6.0 did not change. Everything below is added.
+
+**Added**
+- **`GET /v1/addresses/{address}`** and the MCP tool **`get_address_record`**: for one wallet address, how many jobs it created (as client) and accepted (as worker) in each status, how many deliveries it made and the verdicts they got, and its five newest jobs on each side. Counts only: there is no score, no ranking and no guarantee, and the answer says so. It is as old as `syncedAt`. Answers are cached for 30 seconds. `503 COPY_UNAVAILABLE` on a server with no copy.
+- **`GET /v1/events`** and the MCP tool **`list_events`**: a feed of what changed (a job was created or accepted, a delivery came in or got its verdict, a status moved), oldest first, with a cursor (`after`) and an optional wait (`wait`, up to 25 s) that holds the request until something new arrives. Filters: `job`, `type`, `worker`, `client`. Events are stored, so a client that was away can catch up. The database writes them itself when the indexer changes a row.
+- **A reference agent** in `examples/agent/`: a dependency-free client that speaks MCP, finds open jobs, reads them, asks what accepting would involve and follows the feed. It has no language model inside and only calls read-only tools. It never signs. See [Agents and MCP](agents-mcp.html).
+
+**Changed**
+- **The indexer runs about every ten minutes** (it was hourly), so the copy and the feed are fresher. GitHub may start a scheduled run late or skip one. The copy now counts as `stale` in the deep health check after one hour without a run (it was three).
+
+**What this is not.** Not real time: an event shows up when the indexer sees the change, so `detectedAt` can be minutes after it happened. Not push: there is no SSE and there are no webhooks, because the function behind the API lasts a few seconds and webhooks would need stored subscriptions, signatures and protection against requests to internal networks. Not a reputation system: the address record is counts, and a few jobs say little.
+
+**Database changes** (apply `20261123000005_job_events.sql`): the `job_events` table and the triggers that fill it. The public key can read it and nothing more.
+
+**Not verified yet**
+- The triggers were checked on the hosted database with temporary rows (deleted afterwards): one job going from created to accepted, delivered, evaluated and verified produced exactly the six expected events, and updates that only touch `synced_at` produced none. The deployed API's events and address answers are checked below. A real job changing on the network and its events appearing through a real indexer run has not been seen, because the contract has no jobs.
+- The reference agent was tested against the simulated contract and a stand-in for the database. Run against the deployed API it works with whatever data that API has, which is none yet.
+- The faster schedule is configured, but a scheduled run actually starting on time has not been seen.
 
 ## 1.6.0 (API)
 

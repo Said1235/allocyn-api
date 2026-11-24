@@ -7,6 +7,8 @@ import { readCopyHealth } from "./copy-health.ts";
 import { waitForJob, WAIT_QUERY } from "./wait.ts";
 import { prepareAction, PREPARE_QUERY } from "./prepare.ts";
 import { getStats, STATS_QUERY } from "./stats.ts";
+import { getEvents, EVENTS_QUERY } from "./events.ts";
+import { getAddressRecord } from "./addresses.ts";
 import type { CopyReader } from "./copy.ts";
 import type { QueryParam } from "./params.ts";
 
@@ -60,6 +62,7 @@ export interface Route {
 }
 
 const jobId: Param = { name: "jobId", description: 'Job id, e.g. "job-1". Ids are assigned by the contract: never invent one.', schema: { type: "string", pattern: "^job-[1-9][0-9]*$" }, example: "job-1" };
+const address: Param = { name: "address", description: "A wallet address: 0x followed by 40 hex characters, in any letter case.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" }, example: "0x" + "b2".repeat(20) };
 const receiptId: Param = { name: "receiptId", description: 'Receipt id, e.g. "rcpt-1".', schema: { type: "string", pattern: "^rcpt-[1-9][0-9]*$" }, example: "rcpt-1" };
 const deliveryIndex: Param = { name: "deliveryIndex", description: "1-based delivery number within the job.", schema: { type: "integer", minimum: 1 }, example: "1" };
 const txHash: Param = { name: "txHash", description: "GenLayer transaction hash: 0x followed by 64 hex characters.", schema: { type: "string", pattern: "^0x[0-9a-fA-F]{64}$" }, example: "0x" + "ab".repeat(32) };
@@ -106,6 +109,18 @@ export const ROUTES: Route[] = [
     description: "How many jobs there are in each status, and how many deliveries got each verdict, optionally for one `client` or one `worker`. The contract has no count view, so these numbers come from an optional database copy that an indexer fills from final reads. The answer says when the copy was last refreshed (`syncedAt`). It answers `503 COPY_UNAVAILABLE` on a server that has no copy configured.",
     pathParams: [], query: STATS_QUERY, chainRead: false, cache: "short", schemaRef: "Stats", errors: [400, 429, 502, 503],
     handler: async (ctx) => getStats(ctx),
+  },
+  {
+    method: "GET", path: "/v1/events", operationId: "listEvents", tag: "Jobs", summary: "Feed of job events",
+    description: "What changed in the jobs, oldest first: a job was created or accepted, a delivery came in or got its verdict, a status moved. Cursor based: pass the `cursor` of one answer as `after` in the next, and add `wait` (up to 25 s) to hold the request until something new arrives. Events are stored, so a client that was away can catch up. Read from the optional database copy, so `detectedAt` is when the indexer saw the change, not when it happened on the network. Nothing is pushed and there are no webhooks. `503 COPY_UNAVAILABLE` on a server with no copy.",
+    pathParams: [], query: EVENTS_QUERY, chainRead: false, cache: "no-store", schemaRef: "EventFeed", errors: [400, 429, 502, 503],
+    handler: async (ctx) => getEvents(ctx),
+  },
+  {
+    method: "GET", path: "/v1/addresses/{address}", operationId: "getAddressRecord", tag: "Jobs", summary: "What the copy holds about an address",
+    description: "For one wallet address: how many jobs it created (as client) and accepted (as worker) in each status, how many deliveries it made and the verdicts they got, and its five newest jobs on each side. Counts only: no score, no ranking and no guarantee. Read from the optional database copy, so it is as old as `syncedAt`. `503 COPY_UNAVAILABLE` on a server with no copy. Answers are cached for 30 seconds.",
+    pathParams: [address], chainRead: false, cache: "short", schemaRef: "AddressRecord", errors: [400, 429, 502, 503],
+    handler: async (ctx) => getAddressRecord(ctx),
   },
   {
     method: "GET", path: "/v1/jobs/{jobId}", operationId: "getJob", tag: "Jobs", summary: "Read a job",

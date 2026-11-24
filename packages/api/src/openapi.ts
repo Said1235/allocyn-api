@@ -16,7 +16,7 @@ export const SCHEMAS: Record<string, S> = {
   Health: obj({ status: { type: "string", enum: ["ok"] }, time: { type: "string", format: "date-time" }, checks: { type: "object", additionalProperties: { type: "string" }, description: "With `deep=true`: `chain` is `ok`; `copy` (only when a database copy is configured) is `ok`, `stale`, `failing` or `unavailable`." }, copy: obj({
     syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last wrote the position." },
     lagSeconds: { type: ["integer", "null"], description: "Seconds since `syncedAt`." },
-    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs hourly)." },
+    staleAfterSeconds: { type: "integer", description: "Older than this counts as stale (the indexer runs about every ten minutes)." },
     copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
     lastRun: { type: ["object", "null"], additionalProperties: false, description: "The newest recorded indexer run. Null when none was recorded.", properties: { ok: { type: "boolean" }, finishedAt: { type: "string", format: "date-time" }, newJobs: { type: "integer" }, refreshedJobs: { type: "integer" }, receipts: { type: "integer" }, failedRows: { type: "integer" }, rounds: { type: "integer" } } },
   }), }, ["status", "time", "checks"]),
@@ -81,6 +81,30 @@ export const SCHEMAS: Record<string, S> = {
     receipts: { oneOf: [obj({ total: int, byOutcome: obj({ VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int, PENDING: int }) }), { type: "null" }], description: "Null when filtering by client." },
     notes: { type: "array", items: str },
   }),
+  AddressRecord: obj({
+    address: addr, source: { type: "string", enum: ["copy"] },
+    contract: { type: ["string", "null"] }, network: { type: ["string", "null"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran." },
+    copiedThrough: { type: ["string", "null"], description: "The newest job id the copy has reached." },
+    asWorker: obj({ jobs: obj({ total: int, byStatus: obj({ OPEN: int, IN_PROGRESS: int, VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int }) }), deliveries: obj({ total: int, byOutcome: obj({ VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int, PENDING: int }) }) }),
+    asClient: obj({ jobs: obj({ total: int, byStatus: obj({ OPEN: int, IN_PROGRESS: int, VERIFIED: int, NEEDS_REVISION: int, INCONCLUSIVE: int }) }) }),
+    recent: obj({ asWorker: { type: "array", items: ref("JobSummary") }, asClient: { type: "array", items: ref("JobSummary") } }),
+    notes: { type: "array", items: str },
+  }),
+  EventFeed: obj({
+    items: { type: "array", items: obj({
+      id: int, type: { type: "string", enum: ["job_created", "job_accepted", "delivery_submitted", "delivery_evaluated", "status_changed"] },
+      jobId: { type: "string", pattern: "^job-[1-9][0-9]*$" },
+      detectedAt: { type: "string", format: "date-time", description: "When the indexer saw the change, not when it happened on the network." },
+      fromStatus: { type: ["string", "null"], enum: [...JOB_STATUS, null] }, toStatus: { type: ["string", "null"], enum: [...JOB_STATUS, null] },
+      client: addr, worker: { oneOf: [addr, { type: "null" }] },
+      data: { type: "object", additionalProperties: true, description: "Extra facts of the event, e.g. `deliveryCount`, or `receiptId`, `deliveryIndex` and `outcome` for a verdict." },
+    }) },
+    cursor: { ...int, description: "Pass as `after` to get what comes next." },
+    source: { type: "string", enum: ["copy"] },
+    syncedAt: { type: ["string", "null"], format: "date-time", description: "When the indexer last ran. No event after it is here." },
+    waitedSeconds: { type: "number" }, notes: { type: "array", items: str },
+  }),
   JobWait: obj({ changed: { type: "boolean", description: "False on the first call and when the wait ended with no change." }, version: { type: "string", pattern: "^[0-9a-f]{16}$" }, waitedSeconds: { type: "number" }, job: ref("Job") }),
   Badge: { type: "string", description: "An SVG image." },
   Job: obj({
@@ -137,7 +161,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.6.0",
+      title: "Allocyn API", version: "1.7.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

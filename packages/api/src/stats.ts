@@ -52,7 +52,7 @@ async function viaCounts(copy: CopyReader, client: string | null, worker: string
 }
 
 /** One call to the `job_stats` function; if the database does not have it (404), the counts are made one by one. */
-async function readRaw(copy: CopyReader, client: string | null, worker: string | null): Promise<Raw> {
+export async function readRaw(copy: CopyReader, client: string | null, worker: string | null): Promise<Raw> {
   try { return (await copy.stats({ client, worker })) as Raw; }
   catch (e) { if (e instanceof CopyError && e.status === 404) return viaCounts(copy, client, worker); throw e; }
 }

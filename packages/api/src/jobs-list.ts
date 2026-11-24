@@ -33,7 +33,9 @@ export async function latestJobNumber(client: AllocynClient, now: number): Promi
   return n;
 }
 
-type Item = { id: string; title: string; status: string; client: string; worker: string | null; deliveryCount: number };
+export type Item = { id: string; title: string; status: string; client: string; worker: string | null; deliveryCount: number };
+
+export const rowToSummary = (r: { id: string; title: string; status: string; client: string; worker: string | null; delivery_count: number }): Item => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count });
 
 /** One indexed query on the database copy. Only final data is in the copy, and it is as old as the last indexer run. */
 async function listFromCopy(ctx: Ctx, q: Record<string, string | undefined>, limit: number) {
@@ -50,7 +52,7 @@ async function listFromCopy(ctx: Ctx, q: Record<string, string | undefined>, lim
       copy.listJobs({ filters, ...(q.before ? { before: Number(q.before.slice(4)) } : {}), ...(q.q ? { search: q.q.trim() } : {}), ...(q.updatedSince ? { updatedSince: new Date(q.updatedSince).toISOString() } : {}), limit: limit + 1 }),
     ]);
     const page = rows.slice(0, limit);
-    const items: Item[] = page.map((r) => ({ id: r.id, title: r.title, status: r.status, client: r.client, worker: r.worker, deliveryCount: r.delivery_count }));
+    const items: Item[] = page.map(rowToSummary);
     return {
       items,
       nextCursor: rows.length > limit && page.length ? page[page.length - 1]!.id : null,

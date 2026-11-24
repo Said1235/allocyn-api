@@ -56,10 +56,11 @@ Row level security is on for every table. The public key can read jobs and recei
 |---|---|
 | Tables, indexes and security rules | Applied to a real Supabase project. Checked there: the public role can read jobs and receipts, cannot insert, and cannot see the private table. |
 | Indexer (`npm run index`) | Written and tested against the simulated contract and a stand-in for the Supabase REST API that enforces the same table rules. It also records each run in `indexer_runs`; that write has been tested on the stand-in, and a real run recording a row has **not** been seen yet. |
-| Scheduled run (`.github/workflows/index.yml`) | Runs once an hour, and by hand from the Actions tab. It does nothing until the two secrets exist. |
+| Scheduled run (`.github/workflows/index.yml`) | Runs about every ten minutes, and by hand from the Actions tab. It does nothing until the two secrets exist. |
 | First run on the real project | It recorded which contract and network the database mirrors and found **no jobs**, because the contract had none yet. Copying real jobs into the hosted database has **not** been seen. |
 | `GET /v1/stats` and the MCP tool `get_stats` | Live. Tested against a stand-in for the Supabase REST API and the simulated contract. On the deployed API it answered from the real project with the public key: the right contract and refresh time, all zeros because the copy holds no jobs yet. Counting real jobs has **not** been seen. It turns on when the API has `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Since 1.6.0 it needs two requests, not about thirteen: the hosted database's logs show the deployed API calling the `job_stats` function. |
 | Search and `updatedSince` | `GET /v1/jobs?q=…` and `?updatedSince=…`. The deployed API's search request is accepted by the hosted database. The search column, the trigger and the public role's rights were checked in SQL with temporary rows; real jobs behind the API have **not** been seen. |
+| Events and address records | `GET /v1/events` and `GET /v1/addresses/{address}`. The triggers were checked on the hosted database with temporary rows. Real jobs producing real events have **not** been seen. |
 | Copy health | `GET /v1/health?deep=true` reports `checks.copy` and a `copy` object. Live on the deployed API. When first checked it reported `stale`: no indexer run for about five hours. |
 | Lists from the copy | `GET /v1/jobs?source=copy` and `source=auto`. Tested against a stand-in for the Supabase REST API. On the deployed API the real list request is accepted by the hosted database with the public key, and returns an empty list because the copy holds no jobs yet. Filters and paging on real rows have **not** been seen. The default is still the contract. |
 
@@ -84,6 +85,7 @@ What it does when something goes wrong:
 | `receipts` | `id` (`rcpt-N`), `job_id`, `delivery_index`, `worker`, `url`, `status`, `agreement_hash`, `evidence_hash`, `evidence_size`, `overall_status`, `evaluation_requested_by`, `results` (JSON), `synced_at` | Anyone with the public key |
 | `indexer_state` | The position, the last run, the contract address and the network | Anyone with the public key |
 | `indexer_state` (`last_error`) | The last error, which can name rows and database messages | Only the secret key |
+| `job_events` | `id`, `created_at` (when the indexer saw the change), `job_id`, `type` (`job_created`, `job_accepted`, `delivery_submitted`, `delivery_evaluated`, `status_changed`), `from_status`, `to_status`, `client`, `worker`, `data` (JSON). Written by triggers, not by the indexer's code. | Anyone with the public key |
 | `indexer_runs` | One row per indexer run: `started_at`, `finished_at`, `ok`, `new_jobs`, `refreshed_jobs`, `receipts`, `failed_rows`, `rounds`, `last_job_number`. The newest 200 are kept. | Anyone with the public key |
 | `indexer_runs` (`error`) | The error text of a failed run | Only the secret key |
 
@@ -108,6 +110,7 @@ Supabase secret keys are not JWTs, so the indexer sends them in the `apikey` hea
    - `…0004_public_index_status.sql`: lets the public key read the position, the time of the last run, the contract and the network (and no more), which `/v1/stats` reports.
    - `20261123…0001_job_stats_function.sql`: the function that returns every count in one call.
    - `20261123…0002_indexer_runs.sql`: the table that records each run.
+   - `20261123…0005_job_events.sql`: the event log and the triggers that write it.
    - `20261123…0003_jobs_search_updated.sql` and `…0004_fix_updated_at_trigger.sql`: the search column and `updated_at`. Apply both; the fourth corrects the trigger of the third.
 3. **Create a secret key:** *Project Settings, API Keys, Secret keys*. A key of its own for this use is better than sharing one, because it can be revoked alone.
 4. **Add two secrets to the GitHub repository.** *Settings, Secrets and variables, Actions, Repository secrets* (not *Environment secrets*):
@@ -178,14 +181,46 @@ curl -s 'https://<your-api>/v1/jobs?updatedSince=2026-11-20T00:00:00Z'
 
 `updatedSince` moves only when a job's content changes. A job that the indexer merely read again does not count, so it is the right filter for a dashboard that wants to sync what changed. With `source=contract` both are refused with `400`, and if the copy is down there is no silent fallback to the contract, because the contract cannot answer them: you get `502`.
 
+## Events
+
+`GET /v1/events` is a feed of what changed, oldest first. The database writes the events itself, with triggers, whenever the indexer changes a job or a receipt.
+
+```bash
+# The newest events, and a cursor
+curl -s 'https://<your-api>/v1/events?limit=20'
+
+# What came after that cursor, waiting up to 20 s for something new
+curl -s 'https://<your-api>/v1/events?after=57&wait=20'
+```
+
+| Event | When |
+|---|---|
+| `job_created` | The copy first saw the job. |
+| `job_accepted` | A worker was set. |
+| `delivery_submitted` | The delivery count went up. |
+| `delivery_evaluated` | A delivery got its verdict (`data.outcome`). |
+| `status_changed` | The job's status moved (`fromStatus` and `toStatus`). |
+
+Filters: `job`, `type`, `worker`, `client`. The answer has `cursor`: pass it as `after`. Events are kept, so a client that was away can catch up. If you only need one job, [`wait`](rest-reference.html) on it reads the contract directly and is live.
+
+Three limits, on purpose. **It is not real time:** `detectedAt` is when the indexer saw the change, which is minutes after it happened at best. **Nothing is pushed:** you ask again. There are no webhooks, because they would need stored subscriptions, signatures and protection against requests to internal networks. And a job that was already finished when the copy first saw it has only a `job_created` event.
+
+## What the copy holds about an address
+
+```bash
+curl -s 'https://<your-api>/v1/addresses/0x…'
+```
+
+For one address: its jobs as **client** and as **worker** by status, its deliveries by verdict, and its five newest jobs on each side. These are counts. There is no score, no ranking and no promise, and the answer says so. A few jobs say little; read the jobs before relying on a record. An address the copy has never seen gets all zeros, which can mean unused or just newer than `syncedAt`.
+
 ## Is the copy healthy?
 
 `GET /v1/health?deep=true` adds, when a copy is configured, `checks.copy` and a `copy` object:
 
 | `checks.copy` | Meaning |
 |---|---|
-| `ok` | The indexer ran in the last three hours and its last run succeeded. |
-| `stale` | No run for more than three hours (or never). Check the Actions tab: GitHub may have paused the schedule. |
+| `ok` | The indexer ran in the last hour and its last run succeeded. |
+| `stale` | No run for more than an hour (or never). Check the Actions tab: GitHub may have paused the schedule. |
 | `failing` | The last run had rows the database refused. |
 | `unavailable` | The copy could not be read. |
 
@@ -218,7 +253,7 @@ curl "https://<ref>.supabase.co/rest/v1/jobs?status=eq.OPEN&order=job_number.des
 
 ## Read it with care
 
-- **It lags.** The scheduled run is hourly, and GitHub may start it a little late. Check `synced_at`. For a fresh answer, use the API itself.
+- **It lags.** The scheduled run is about every ten minutes, and GitHub may start it late or skip one. Check `synced_at`. For a fresh answer, use the API itself.
 - **It is a copy.** Do not use it as proof of anything. For a result you will rely on, read the contract through the API, and check the delivered page with [`checkEvidence`](verification-results.html).
 - **Skipped rows are not retried.** A row the database refused is noted once in `last_error`. Fix the cause, set `last_job_number` back to `0` in `indexer_state` and run it again; the writes are upserts, so that is safe.
 - **GitHub can pause the schedule.** In a public repository, scheduled workflows are switched off after 60 days without activity. The Actions tab shows a banner to turn them back on.

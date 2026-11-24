@@ -69,3 +69,13 @@ curl "$API/v1/jobs/job-2/prepare?action=accept&actor=0xYourAddress"
 ## Status
 
 The MCP server is covered by automated tests that send real JSON-RPC messages over HTTP and over stdio against the simulated contract. It has also been checked with the **official MCP Python SDK** as an independent client, over both transports (19 checks: initialize, tool list, reads, error handling, ping; run `npm run test:mcp-client`, needs `pip install mcp`). It has **not** yet been tried in a desktop agent (Claude Desktop, Cursor, the MCP Inspector) or against the live Studionet, so check it with your own client before relying on it.
+
+## A reference agent
+
+`examples/agent/agent.mjs` in the repository is a small agent that makes the calls described above, with no dependencies and no language model inside. It lists the tools, finds open jobs (`list_jobs` with `q`), reads each one (`get_job`), asks what accepting would involve (`prepare_action`) and, with `--watch`, follows the feed (`list_events`).
+
+```bash
+node examples/agent/agent.mjs --base https://your-api.example --q logo --actor 0xYourAddress --watch
+```
+
+It only calls read-only tools and refuses any other name. It never signs or sends anything: the person signs, in their own wallet. Treat it as a starting point: put your model where it prints, and keep the last step with a human. It was tested against the simulated contract and a stand-in for the database; a real accept flow has **not** been seen, because the contract has no jobs yet.

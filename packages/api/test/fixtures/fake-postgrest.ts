@@ -18,6 +18,8 @@ export interface FakeDb {
   rejectIds: Set<string>;
   /** True: behave like the public role (the private column of indexer_state is refused). */
   publicRole: boolean;
+  /** Rows of job_events (the database writes them itself through triggers; tests seed them). */
+  events: any[];
   /** Rows of indexer_runs, oldest first. */
   runs: any[];
   /** False: the `job_stats` function is missing, as before its migration (PostgREST answers 404). */
@@ -32,7 +34,7 @@ const STATUS = new Set(["OPEN", "IN_PROGRESS", "VERIFIED", "NEEDS_REVISION", "IN
 
 export async function startFakePostgrest(key = "sb_secret_test_key_123"): Promise<FakeDb> {
   const db: FakeDb = {
-    url: "", key, jobs: new Map(), receipts: new Map(), log: [], rejectIds: new Set(), forceStatus: null, publicRole: false, runs: [], rpcEnabled: true,
+    url: "", key, jobs: new Map(), receipts: new Map(), log: [], rejectIds: new Set(), forceStatus: null, publicRole: false, runs: [], events: [], rpcEnabled: true,
     state: { last_job_number: 0, last_run_at: null, last_error: null, contract_address: null, network: null },
     close: async () => {},
   };
@@ -73,6 +75,15 @@ export async function startFakePostgrest(key = "sb_secret_test_key_123"): Promis
           jobs: { total: js.length, byStatus: Object.fromEntries([...STATUS].map((s) => [s, n(js, (j) => j.status === s)])) },
           receipts: rs && { total: rs.length, byOutcome: { VERIFIED: n(rs, (r) => r.overall_status === "VERIFIED"), NEEDS_REVISION: n(rs, (r) => r.overall_status === "NEEDS_REVISION"), INCONCLUSIVE: n(rs, (r) => r.overall_status === "INCONCLUSIVE"), PENDING: n(rs, (r) => r.status === "PENDING") } },
         });
+      }
+      if (table === "job_events" && req.method === "GET") {
+        let rows = db.events.filter((e) => {
+          for (const c of ["job_id", "type", "worker", "client"]) { const f = u.searchParams.get(c); if (f?.startsWith("eq.") && String(e[c]) !== f.slice(3)) return false; }
+          const gt = u.searchParams.get("id");
+          return !gt?.startsWith("gt.") || e.id > Number(gt.slice(3));
+        });
+        rows = rows.sort((a, b) => u.searchParams.get("order") === "id.desc" ? b.id - a.id : a.id - b.id).slice(0, Number(u.searchParams.get("limit") ?? 1000));
+        return send(res, 200, rows);
       }
       if (table === "indexer_runs") {
         if (req.method === "GET") {
