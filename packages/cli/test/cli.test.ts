@@ -139,3 +139,42 @@ test("prepare shows what the person would sign and sends nothing", async () => {
   const sub = await cli(["prepare", "job-2", "--action", "submit", "--delivery-url", "https://example.org/x", "--api", api]);
   assert.equal(sub.code, 0); assert.equal(JSON.parse(sub.out).canProceed, false);
 });
+
+// ---- commands that read the optional database copy ----
+
+import { createCopyReader } from "../../api/src/copy.ts";
+import { startFakePostgrest } from "../../api/test/fixtures/fake-postgrest.ts";
+
+test("events, address, stats and the new jobs filters read the database copy", async () => {
+  const KEY = "sb_publishable_test_key";
+  const db = await startFakePostgrest(KEY); db.publicRole = true;
+  db.state.last_job_number = 2; db.state.last_run_at = "2026-11-24T06:44:00+00:00";
+  db.jobs.set("job-1", { id: "job-1", title: "Logo files", description: "The studio logo", status: "VERIFIED", client: ALICE, worker: BOB, delivery_count: 1 });
+  db.jobs.set("job-2", { id: "job-2", title: "Second", description: "An open job", status: "OPEN", client: ALICE, worker: null, delivery_count: 0 });
+  db.receipts.set("rcpt-1", { id: "rcpt-1", job_id: "job-1", worker: BOB, status: "EVALUATED", overall_status: "VERIFIED" });
+  db.events.push({ id: 1, created_at: "2026-11-24T06:00:00+00:00", job_id: "job-1", type: "job_created", from_status: null, to_status: "OPEN", client: ALICE, worker: null, data: {} });
+  db.events.push({ id: 2, created_at: "2026-11-24T06:10:00+00:00", job_id: "job-1", type: "job_accepted", from_status: null, to_status: null, client: ALICE, worker: BOB, data: {} });
+  const mk = (c: "latest" | "final") => createAllocynClient({ gateway: sim, actor: null, readConsistency: c });
+  const withCopy = createApiServer({ config: loadConfig({ NODE_ENV: "test", RATE_LIMIT_MAX: "1000" }), clients: { latest: await mk("latest"), final: await mk("final") }, copy: createCopyReader({ url: db.url, key: KEY }) });
+  await new Promise<void>((r) => withCopy.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(withCopy.address() as AddressInfo).port}`;
+  try {
+    const events = JSON.parse((await cli(["events", "--after", "0", "--limit", "10", "--worker", BOB, "--api", url])).out);
+    assert.deepEqual(events.items.map((e: any) => e.id), [2]); assert.equal(events.cursor, 2);
+    assert.deepEqual(JSON.parse((await cli(["events", "--type", "job_created", "--job", "job-1", "--api", url])).out).items.map((e: any) => e.id), [1]);
+    const addr = JSON.parse((await cli(["address", BOB, "--api", url])).out);
+    assert.equal(addr.address, BOB); assert.equal(addr.asWorker.jobs.total, 1); assert.equal(addr.asWorker.deliveries.byOutcome.VERIFIED, 1);
+    const stats = JSON.parse((await cli(["stats", "--client", ALICE, "--api", url])).out);
+    assert.equal(stats.jobs.total, 2); assert.equal(stats.receipts, null);
+    const found = JSON.parse((await cli(["jobs", "--q", "logo", "--api", url])).out);
+    assert.equal(found.source, "copy"); assert.deepEqual(found.items.map((j: any) => j.id), ["job-1"]);
+    const copyList = JSON.parse((await cli(["jobs", "--source", "copy", "--status", "OPEN", "--api", url])).out);
+    assert.deepEqual(copyList.items.map((j: any) => j.id), ["job-2"]);
+    const since = await cli(["jobs", "--updated-since", "yesterday", "--api", url]);
+    assert.equal(since.code, 1); assert.match(since.err, /updatedSince/);
+    // a server with no copy: the error is explained, exit 1
+    const none = await cli(["events", "--api", api]);
+    assert.equal(none.code, 1); assert.match(none.err, /COPY_UNAVAILABLE/);
+    assert.equal((await cli(["address", "--api", url])).code, 2, "address needs an argument");
+  } finally { withCopy.closeAllConnections(); withCopy.close(); await db.close(); }
+});

@@ -19,9 +19,18 @@ node packages/cli/dist/cli.js proof job-1
 node packages/cli/dist/cli.js badge job-1 --url
 node packages/cli/dist/cli.js evidence rcpt-1
 node packages/cli/dist/cli.js prepare job-2 --action accept --actor 0xYourAddress
+
+# These read the optional database copy (see Database copy):
+node packages/cli/dist/cli.js jobs --q logo --limit 5
+node packages/cli/dist/cli.js jobs --updated-since 2026-11-20T00:00:00Z
+node packages/cli/dist/cli.js stats --worker 0xYourAddress
+node packages/cli/dist/cli.js address 0xYourAddress
+node packages/cli/dist/cli.js events --after 0 --limit 20 --wait 15
 ```
 
 `evidence` downloads the delivered page on your machine and compares it with the receipt (see [Verification results](verification-results.html)). `prepare` only reads: it shows what a person would sign and sends nothing.
+
+`stats`, `address` and `events` need an API that has a [database copy](database.html); without one they exit `1` with `COPY_UNAVAILABLE`. `jobs` with `--q` or `--updated-since` reads the copy too. `events` prints a `cursor`: pass it back as `--after` to continue, and use `--wait` to hold the request until something new arrives. None of this is real time: events show what the indexer has seen.
 
 Answers go to standard output as JSON, errors to standard error, so it works in scripts. Exit codes: `0` ok, `1` the API answered with an error, `2` wrong usage, `3` the API could not be reached. The commands are `health`, `meta`, `limits`, `jobs`, `job`, `receipts`, `receipt`, `proof`, `wait`, `badge` and `tx`; `--help` lists the options. There is no default API address, and `http://` is only accepted for `localhost`.
 

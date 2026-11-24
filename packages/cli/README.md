@@ -6,6 +6,9 @@ Read Allocyn jobs, receipts, proofs and badges from a terminal or a script. It t
 export ALLOCYN_API_URL=https://your-project.vercel.app
 allocyn job job-1
 allocyn jobs --status VERIFIED --limit 5
+allocyn jobs --q logo                 # search (needs the API's database copy)
+allocyn address 0xYourAddress         # its jobs as client and as worker
+allocyn events --after 0 --wait 15    # what changed, with a cursor
 allocyn proof job-1
 allocyn wait job-1            # prints the job and its version
 allocyn wait job-1 --since <version>   # returns when the job changes

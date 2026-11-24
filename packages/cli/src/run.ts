@@ -5,7 +5,7 @@
  */
 import { checkEvidence } from "../../sdk/src/evidence.ts";
 
-export const CLI_VERSION = "0.2.0";
+export const CLI_VERSION = "0.3.0";
 
 export interface Io {
   fetch: typeof fetch;
@@ -24,6 +24,12 @@ Commands:
   limits                             Input limits read from the contract
   jobs                               List jobs, newest first
         [--status S] [--client ADDR] [--worker ADDR] [--limit N] [--before job-N]
+        [--q WORDS] [--updated-since ISO-TIME] [--source contract|copy|auto]
+                                     (--q and --updated-since need the API's database copy)
+  stats [--client ADDR] [--worker ADDR]   Counts of jobs and verdicts (needs the database copy)
+  address <0xADDRESS>                What the copy holds about one address: its jobs as client and as worker
+  events                             Feed of what changed in the jobs (needs the database copy)
+        [--after N] [--limit N] [--job job-N] [--type T] [--worker ADDR] [--client ADDR] [--wait S]
   job <job-id>                       One job
   receipts <job-id>                  Every receipt of a job
   receipt <rcpt-id>                  One receipt
@@ -49,7 +55,7 @@ class Usage extends Error {}
 
 function parse(argv: string[]) {
   const flags: Record<string, string | true> = {}; const pos: string[] = [];
-  const withValue = new Set(["api", "consistency", "status", "client", "worker", "limit", "before", "since", "timeout", "action", "delivery-url", "actor"]);
+  const withValue = new Set(["api", "consistency", "status", "client", "worker", "limit", "before", "since", "timeout", "action", "delivery-url", "actor", "q", "updated-since", "source", "after", "job", "type", "wait"]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "-h") flags.help = true;
@@ -87,7 +93,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
       case "health": path = "/v1/health"; if (flags.deep) q.set("deep", "true"); break;
       case "meta": path = "/v1/meta"; break;
       case "limits": path = "/v1/limits"; break;
-      case "jobs": path = "/v1/jobs"; add("status", "client", "worker", "limit", "before", "consistency"); break;
+      case "jobs": path = "/v1/jobs"; add("status", "client", "worker", "limit", "before", "consistency", "q", "source"); if (flags["updated-since"] !== undefined) q.set("updatedSince", String(flags["updated-since"])); break;
+      case "stats": path = "/v1/stats"; add("client", "worker"); break;
+      case "address": path = `/v1/addresses/${one(pos, "0xADDRESS")}`; break;
+      case "events": path = "/v1/events"; add("after", "limit", "job", "type", "worker", "client", "wait"); break;
       case "job": path = `/v1/jobs/${one(pos, "job-id")}`; add("consistency"); break;
       case "receipts": path = `/v1/jobs/${one(pos, "job-id")}/receipts`; add("consistency"); break;
       case "receipt": path = `/v1/receipts/${one(pos, "rcpt-id")}`; add("consistency"); break;
