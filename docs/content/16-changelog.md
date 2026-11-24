@@ -24,9 +24,9 @@ The routes and shapes of 1.0.0 to 1.6.0 did not change. Everything below is adde
 **Database changes** (apply `20261123000005_job_events.sql`): the `job_events` table and the triggers that fill it. The public key can read it and nothing more.
 
 **Not verified yet**
-- The triggers were checked on the hosted database with temporary rows (deleted afterwards): one job going from created to accepted, delivered, evaluated and verified produced exactly the six expected events, and updates that only touch `synced_at` produced none. The deployed API's events and address answers are checked below. A real job changing on the network and its events appearing through a real indexer run has not been seen, because the contract has no jobs.
+- The triggers were checked on the hosted database with temporary rows (deleted afterwards): one job going from created to accepted, delivered, evaluated and verified produced exactly the six expected events, and updates that only touch `synced_at` produced none. On the deployed API, `GET /v1/events` and `GET /v1/addresses/{address}` answer `200` from the hosted database, with an empty feed and all zeros, because the copy holds no jobs. A real job changing on the network and its events appearing through a real indexer run has not been seen, because the contract has no jobs.
 - The reference agent was tested against the simulated contract and a stand-in for the database. Run against the deployed API it works with whatever data that API has, which is none yet.
-- The faster schedule is configured, but a scheduled run actually starting on time has not been seen.
+- **The schedule has not been seen firing.** The deployed deep health check shows one real indexer run recorded in `indexer_runs` (`ok`, 0 jobs, 0 receipts), so recording works against the real database. That run was started by hand. Since then no run appeared on its own, including in the 13 minutes after the schedule was changed to every ten minutes, and the copy reports `stale`. Whether GitHub is not starting the scheduled workflow, or starts it late, was not found out from here. Run it by hand from the Actions tab, and check that tab for a paused schedule.
 
 ## 1.6.0 (API)
 
@@ -43,7 +43,7 @@ The routes and shapes of 1.0.0 to 1.5.0 did not change. Everything below is adde
 **Database changes** (apply the new migrations, in order): `job_stats` function; `indexer_runs` table; full-text `search` column and an `updated_at` column on `jobs` that moves only when a job's content changes (not when it is merely re-read). A first version of that trigger treated every update as a change; the fourth migration fixes it. The error was found by testing on the hosted database, not by the stand-in.
 
 **Not verified yet**
-- The indexer writing its run records has been tested against the stand-in, and the table's permissions on the hosted database. A real hourly run writing a row has not been seen yet.
+- The indexer writing its run records: seen once on the hosted database (a run started by hand), after being tested on the stand-in. See 1.7.0 for the schedule.
 - On the deployed API, the hosted database's logs show `POST /rest/v1/rpc/job_stats` and the search request (`search=plfts(simple).…`) both answered `200`, so the function and the search filter are accepted. The lists came back empty and the counts zero, because the copy holds no jobs. Search, `updatedSince` and the trigger were checked on real rows only with two temporary test rows in SQL (deleted afterwards), not through the API.
 - When the deployed deep health check was first run, it answered `checks.copy: "stale"`: the last indexer run was about five hours old, so the hourly schedule had not fired since then. That is the check doing its job. Why the schedule did not run was not investigated from here.
 
