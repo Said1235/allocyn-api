@@ -154,9 +154,8 @@ test("MCP: the docs page lists every tool, and llms.txt lists every route and to
   assert.ok(!/localhost/.test(llms) || process.env.API_BASE_URL === undefined, "llms.txt names the real base URL when one is configured");
 });
 
-test("activity panel: built, linked from the landing, reads only public routes and never writes HTML from data", () => {
+test("activity panel: built (not linked from the landing), reads only public routes and never writes HTML from data", () => {
   const html = read("activity.html");
-  assert.ok(read("index.html").includes('href="activity.html"'));
   for (const id of ["fresh", "bar", "legend", "t-status", "days", "feed", "addr-form"]) assert.ok(html.includes(`id="${id}"`), id);
   assert.ok(/The contract has no jobs yet/.test(html));
   const js = read("activity.js");
@@ -166,10 +165,8 @@ test("activity panel: built, linked from the landing, reads only public routes a
   assert.ok(!/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(js));
 });
 
-test("landing links to the live panel (hero, its own section, closing) and the table of contents can be collapsed", () => {
-  const html = read("index.html");
-  assert.ok((html.match(/href="activity\.html"/g) ?? []).length >= 4, "nav, hero, live section, closing");
-  assert.ok(html.includes('id="live"'));
+test("the landing does not link to the activity panel (it is empty until the first job exists); the table of contents can be collapsed", () => {
+  assert.ok(!read("index.html").includes("activity.html"));
   const page = read("quickstart.html");
   assert.match(page, /<details class="tocd" id="tocd" open><summary>On this page<\/summary>/);
   assert.ok(read("app.js").includes("allocyn.docs.toc"));

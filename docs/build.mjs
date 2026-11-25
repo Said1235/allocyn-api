@@ -484,15 +484,15 @@ async function landingHtml(links) {
 <script>document.documentElement.classList.add("js")</script><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"></head>
 <body class="lp"><a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="index.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a>
-<nav class="nav" id="lp-nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="activity.html">Activity</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
+<nav class="nav" id="lp-nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
 ${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">Open the app</a>` : ""}
 <button class="icon" id="lp-menu" type="button" aria-expanded="false" aria-controls="lp-nav">Menu</button>
 <button class="icon" id="theme" type="button"></button></header>
 <main id="main">
 <section class="hero"><div class="hero-glow" aria-hidden="true"></div><div class="wrap hero-grid">
-  <div class="hero-copy"><a class="rel" href="changelog.html"><b>v${API_VERSION}</b><span>Proof packs, verify pages, live activity</span><i aria-hidden="true"></i></a><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
+  <div class="hero-copy"><a class="rel" href="changelog.html"><b>v${API_VERSION}</b><span>Proof packs, verify pages, evidence checks</span><i aria-hidden="true"></i></a><h1><span>Verified work.</span> <span>Trustless execution.</span> <span>Readable by any app or agent.</span></h1>
   <p class="lede">Allocyn provides a verifiable infrastructure for work agreements, deliverables and on-chain verification. Integrate through REST APIs, SDKs or AI agents using MCP.</p>
-  <div class="cta"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read Documentation</a><a class="btn ghost" href="rest-reference.html">Open the API</a><a class="btn ghost live" href="activity.html"><i class="dot" aria-hidden="true"></i>Live activity</a></div>
+  <div class="cta"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read Documentation</a><a class="btn ghost" href="rest-reference.html">Open the API</a></div>
   <p class="fine">Studionet only. The API is read-only, holds no wallet keys and stores no jobs.</p></div>
   <div class="hero-vis">${hv}</div>
 </div></section>
@@ -503,8 +503,6 @@ ${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">O
 <div class="rv" style="--d:140ms"><dt>Written criteria per job</dt><dd><b>1–20</b></dd></div>
 <div class="rv" style="--d:210ms"><dt>Deliveries per job</dt><dd><b>2</b> at most</dd></div>
 </dl></div></section>
-
-<section class="block live-sec" id="live"><div class="wrap"><div class="live-card rv"><div><h2>See what the contract has recorded.</h2><p class="sub">A public panel with jobs by status, deliveries by verdict, recent events and an address lookup. It says how fresh its data is, and it is read-only.</p></div><a class="btn primary" href="activity.html">Open the live panel</a></div></div></section>
 
 <section class="block" id="how"><div class="wrap"><div class="head rv"><h2>From agreement to verified work.</h2><p class="sub">Three moves, each one recorded in the contract.</p></div>
 <ol class="steps3">${how}</ol></div></section>
@@ -527,9 +525,9 @@ ${flowHtml()}<noscript><figure class="diagram" style="margin:0">${DIAGRAMS.job}<
 <ul class="nots">${nots}</ul></div></section>
 
 <section class="block closing"><div class="closing-bg" aria-hidden="true"></div><div class="wrap"><h2 class="rv">Ready to build with verified work?</h2><p class="sub rv">Start integrating verifiable work infrastructure into your applications and AI agents.</p>
-<div class="cta rv"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read the Documentation</a><a class="btn ghost" href="rest-reference.html">Explore the API</a><a class="btn ghost" href="activity.html">Live activity</a>${ext("Open the app", links.appUrl, "ghost")}${ext("View on GitHub", links.repoUrl, "ghost")}</div></div></section>
+<div class="cta rv"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read the Documentation</a><a class="btn ghost" href="rest-reference.html">Explore the API</a>${ext("Open the app", links.appUrl, "ghost")}${ext("View on GitHub", links.repoUrl, "ghost")}</div></div></section>
 </main>
-<footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="activity.html">Activity</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
+<footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
 <script src="app.js"></script><script src="landing.js"></script></body></html>`;
 }
 
