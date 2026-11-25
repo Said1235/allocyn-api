@@ -1417,7 +1417,7 @@ function toReceiptDto(r) {
 }
 
 // packages/sdk/src/client.ts
-var SDK_VERSION = "0.2.0";
+var SDK_VERSION = "0.3.0";
 var TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 function bad2(field, message) {
   return new AllocynError("INVALID_ARGUMENT", message, { field });
@@ -1716,6 +1716,38 @@ async function createAllocynClient(options = {}) {
     ...options.sleep ? { sleep: options.sleep } : {}
   });
   return new AllocynClient({ network, contractAddress, gateway, actor, readConsistency, softLimits: soft, pending, repo, preflight, limitsTtlMs: options.limitsTtlMs ?? 6e4, now: options.now ?? Date.now });
+}
+
+// packages/sdk/src/proof.ts
+var PROOF_FORMAT = "allocyn.proof";
+var PROOF_FORMAT_VERSION = 1;
+function isFinalJob(job) {
+  if (job.status === "VERIFIED") return true;
+  return (job.status === "NEEDS_REVISION" || job.status === "INCONCLUSIVE") && job.deliveryCount >= CONTRACT_LIMITS.maxDeliveriesPerJob;
+}
+function canonicalProofJson(v) {
+  if (Array.isArray(v)) return "[" + v.map(canonicalProofJson).join(",") + "]";
+  if (v && typeof v === "object") {
+    const o = v;
+    return "{" + Object.keys(o).sort().filter((k) => o[k] !== void 0).map((k) => JSON.stringify(k) + ":" + canonicalProofJson(o[k])).join(",") + "}";
+  }
+  return JSON.stringify(v);
+}
+function buildProofFacts(contract, job, receipts) {
+  return {
+    contract,
+    job: { id: job.id, title: job.title, description: job.description, criteria: job.criteria, client: job.client, worker: job.worker, status: job.status, deliveryCount: job.deliveryCount, termsHash: job.termsHash, agreementHash: job.agreementHash },
+    deliveries: receipts.map((r) => ({
+      deliveryIndex: r.deliveryIndex,
+      receiptId: r.id,
+      url: r.url,
+      status: r.status,
+      overallStatus: r.overallStatus,
+      evidenceHash: r.evidenceHash,
+      evidenceSize: r.evidenceSize,
+      results: r.results.map((x) => ({ criterionId: x.criterionId, status: x.status, reasonCode: x.reasonCode }))
+    }))
+  };
 }
 
 // packages/api/src/copy.ts
@@ -2024,51 +2056,18 @@ import { createHash as createHash4 } from "node:crypto";
 
 // packages/api/src/proof.ts
 import { createHash as createHash2 } from "node:crypto";
-function isFinalJob(job) {
-  if (job.status === "VERIFIED") return true;
-  return (job.status === "NEEDS_REVISION" || job.status === "INCONCLUSIVE") && job.deliveryCount >= CONTRACT_LIMITS.maxDeliveriesPerJob;
-}
-function canonicalJson2(v) {
-  if (Array.isArray(v)) return "[" + v.map(canonicalJson2).join(",") + "]";
-  if (v && typeof v === "object") {
-    const o = v;
-    return "{" + Object.keys(o).sort().filter((k) => o[k] !== void 0).map((k) => JSON.stringify(k) + ":" + canonicalJson2(o[k])).join(",") + "}";
-  }
-  return JSON.stringify(v);
-}
+var canonicalJson2 = canonicalProofJson;
 async function buildProof(ctx, consistency) {
   const client = ctx.client(consistency);
   const meta = client.getMeta();
   const jobId2 = ctx.params.jobId;
   const job = await client.getJob(jobId2);
   const receipts = job.receiptIds.length ? await client.getJobReceipts(jobId2) : [];
-  const facts = {
-    contract: { address: meta.contractAddress, chainId: meta.network.chainId, sourceSha256: meta.contractProfile.sourceSha256 },
-    job: {
-      id: job.id,
-      title: job.title,
-      description: job.description,
-      criteria: job.criteria,
-      client: job.client,
-      worker: job.worker,
-      status: job.status,
-      deliveryCount: job.deliveryCount,
-      termsHash: job.termsHash,
-      agreementHash: job.agreementHash
-    },
-    deliveries: receipts.map((r) => ({
-      deliveryIndex: r.deliveryIndex,
-      receiptId: r.id,
-      url: r.url,
-      status: r.status,
-      overallStatus: r.overallStatus,
-      evidenceHash: r.evidenceHash,
-      evidenceSize: r.evidenceSize,
-      results: r.results.map((x) => ({ criterionId: x.criterionId, status: x.status, reasonCode: x.reasonCode }))
-    }))
-  };
+  const facts = buildProofFacts({ address: meta.contractAddress, chainId: meta.network.chainId, sourceSha256: meta.contractProfile.sourceSha256 }, job, receipts);
   const explorer = meta.network.explorerUrl.replace(/\/+$/, "");
   return {
+    format: PROOF_FORMAT,
+    formatVersion: PROOF_FORMAT_VERSION,
     jobId: job.id,
     status: job.status,
     final: isFinalJob(job),
@@ -2082,12 +2081,14 @@ async function buildProof(ctx, consistency) {
     verify: [
       `Read job ${job.id} from the contract at ${meta.contractAddress} on ${meta.network.label} yourself, with your own GenLayer client or the explorer, and compare it with "facts.job".`,
       'Read each receipt the same way and compare it with the matching entry in "facts.deliveries".',
-      'Recompute the digest: SHA-256 of the UTF-8 JSON of "facts" with object keys sorted at every level.'
+      'Recompute the digest: SHA-256 of the UTF-8 JSON of "facts" with object keys sorted at every level.',
+      "Or save this file and run `allocyn verify proof.json --chain`, or `verifyProofPack()` from @allocyn/sdk: they do all of this for you."
     ],
     notes: [
       "The digest helps notice that a copy of this proof was altered. It is not a signature, and it proves nothing about the contract: only reading the contract does.",
       "VERIFIED means validators judged a public page against the written criteria. It is not a payment, an escrow or a guarantee of quality.",
-      "A job that is not final can still change."
+      "A job that is not final can still change.",
+      "The contract does not store transaction hashes, so this pack has none. `contractUrl` opens the contract on the explorer."
     ]
   };
 }
@@ -2704,8 +2705,8 @@ var ROUTES = [
     path: "/v1/jobs/{jobId}/proof",
     operationId: "getJobProof",
     tag: "Jobs",
-    summary: "Proof summary of a job",
-    description: "A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. The digest is not a signature. `final: true` means the job cannot change any more.",
+    summary: "Proof pack of a job",
+    description: 'A portable proof pack, safe to save and send as a file (`format: "allocyn.proof"`, version 1). It holds: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. The digest is not a signature. `final: true` means the job cannot change any more. Anyone can check a saved pack without trusting this API: `verifyProofPack()` in @allocyn/sdk or `allocyn verify proof.json --chain` re-read the contract and compare. The contract stores no transaction hashes, so the pack has none.',
     pathParams: [jobId],
     chainRead: true,
     cache: "no-store",
@@ -2877,6 +2878,8 @@ var SCHEMAS = {
   ContractLimits: obj({ minCriteria: int3, maxCriteria: int3, maxTitleLength: int3, maxDescriptionLength: int3, maxCriterionLength: int3, maxUrlLength: int3, maxContentBytes: int3, minEvidenceExcerptLength: int3, maxEvidenceExcerptLength: int3, maxDeliveriesPerJob: int3 }),
   Criterion: obj({ id: str2, text: str2 }),
   Proof: obj({
+    format: { type: "string", enum: ["allocyn.proof"], description: "Marks the answer as a portable proof pack." },
+    formatVersion: { type: "integer", enum: [1] },
     jobId: str2,
     status: { type: "string", enum: JOB_STATUS },
     final: { type: "boolean" },
@@ -3036,7 +3039,7 @@ function buildOpenApi(cfg) {
     openapi: "3.1.0",
     info: {
       title: "Allocyn API",
-      version: "1.7.0",
+      version: "1.8.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk."
     },
     servers: [{ url: cfg.apiBaseUrl }],
@@ -3128,7 +3131,8 @@ async function renderVerifyPage(ctx, consistency, baseUrl) {
   }).join("");
   const lastReceipt = [...deliveries].reverse().find((d) => d.status === "EVALUATED");
   const how = [
-    `curl -s ${api}/v1/jobs/${esc2(job.id)}/proof`,
+    `curl -s ${api}/v1/jobs/${esc2(job.id)}/proof > proof.json`,
+    `allocyn verify proof.json --chain`,
     lastReceipt ? `allocyn evidence ${esc2(lastReceipt.receiptId)} --api ${api}` : null
   ].filter(Boolean).join("\n");
   const description = `${job.id} is ${job.status}${proof.final ? " (final)" : ""}: ${job.criteria.length} written criteria. Validators judged a public page against them. Not a payment, escrow or guarantee of quality.`;
@@ -3137,6 +3141,7 @@ async function renderVerifyPage(ctx, consistency, baseUrl) {
 <h2>Deliveries</h2>${deliveries.length ? `<div class="box tw"><table><thead><tr><th>#</th><th>Page</th><th>Receipt</th><th>Evidence</th></tr></thead><tbody>${deliveryRows}</tbody></table></div>` : `<div class="box"><div class="row"><span class="t">No delivery yet.</span></div></div>`}
 <h2>Parties</h2><div class="box tw"><table><tbody><tr><th>Client</th><td title="${esc2(job.client)}"><code>${esc2(short(job.client))}</code></td></tr><tr><th>Worker</th><td title="${esc2(job.worker ?? "")}"><code>${esc2(short(job.worker))}</code></td></tr></tbody></table></div>
 <h2>Check it yourself</h2><div class="box"><pre>${how}</pre></div>
+<p class="note" style="border:0;margin:10px 0 0;padding:0"><a href="/v1/jobs/${esc2(encodeURIComponent(job.id))}/proof" download="allocyn-proof-${esc2(job.id)}.json">Download the proof pack (JSON)</a>. Anyone can check the file against the contract without trusting this page: <code>allocyn verify</code> or <code>verifyProofPack()</code> from @allocyn/sdk.</p>
 <p class="note">Read from the contract at ${esc2(proof.readAt)} (${esc2(proof.consistency)} consistency). Digest of these facts: <code>${esc2(proof.digest.value.slice(0, 16))}\u2026</code>. <a href="${esc2(proof.contractUrl)}" rel="noopener noreferrer">Contract on the explorer</a>.<br>
 VERIFIED means validators judged a public page against written criteria. It is not a payment, an escrow, a dispute resolution or a guarantee of quality. ${proof.final ? "" : "This job is not final and can still change. "}The delivered page is third-party content and can change after it was judged.</p>`;
   return { ...layout(`${job.id} \xB7 ${job.status} \xB7 Allocyn`, description, body, 200), final: proof.final };
@@ -3148,7 +3153,7 @@ function renderVerifyError(status, message) {
 
 // packages/api/src/mcp.ts
 var MCP_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-var MCP_SERVER_VERSION = "1.7.0";
+var MCP_SERVER_VERSION = "1.8.0";
 var snake = (s) => s.replace(/([A-Z])/g, "_$1").toLowerCase();
 function buildTools() {
   return ROUTES.filter((r) => r.mcp !== false).map((r) => {

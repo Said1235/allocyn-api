@@ -5,7 +5,23 @@ summary: What changed in each version of the API, SDK and docs.
 ---
 # Changelog
 
-Versions: **API v1** (URL prefix `/v1`, release 1.7.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+Versions: **API v1** (URL prefix `/v1`, release 1.8.0), **SDK 0.3.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
+
+## 1.8.0 (API) · 0.3.0 (SDK) · 0.4.0 (CLI): proof packs
+
+`GET /v1/jobs/{id}/proof` is now a portable **proof pack**, so a result can be checked by someone who does not trust this API. Nothing was removed: every field of the old summary is still there, with the same digest. Two fields were added (`format: "allocyn.proof"`, `formatVersion: 1`) and two notes.
+
+**Added**
+- `verifyProofPack(pack, { reader?, checkEvidence? })` in the SDK. It checks the file format, recomputes the digest, checks the contract and its audited source hash, recomputes the job's terms and agreement hashes, checks that the pack agrees with itself and, with a reader, re-reads the job and every delivery from the contract and compares them. It returns `verified`, `consistent`, `mismatch` or `invalid` with one line per check. `buildProofFacts`, `proofDigest`, `canonicalProofJson` and `isFinalJob` are exported too.
+- `allocyn verify proof.json [--chain] [--evidence] [--json]` in the CLI. It needs no API address. `--chain` loads `@allocyn/sdk` only when asked, so the CLI file stays dependency free.
+- A "Download the proof pack" link on the `/verify/{job}` page.
+
+**Good to know**
+- The pack has no transaction hashes: the contract does not store them.
+- The digest is not a signature. A pack made by someone who also recomputes the digest passes the offline checks; `--chain` is what catches it.
+- A pack made from an API older than 1.8.0 has no `format` field and is reported as `invalid` with a message saying so. Fetch it again.
+
+**Not verified yet:** `--chain` against the live Studionet contract (the tests read a simulated contract), `verify` on a pack of a real job (the contract has no jobs yet), and npm publishing of the new SDK and CLI versions.
 
 ## Docs: activity panel
 

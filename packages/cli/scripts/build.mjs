@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const esbuild = (() => { for (const p of ["esbuild", "/opt/npm-tools/node_modules/esbuild"]) { try { return require(p); } catch { /* next */ } } throw new Error("esbuild is not installed. Run `npm install`."); })();
 await esbuild.build({
   entryPoints: [path.join(root, "src/cli.ts")], outfile: path.join(root, "dist/cli.js"), absWorkingDir: root,
-  bundle: true, platform: "node", format: "esm", target: "node18", legalComments: "none",
+  bundle: true, platform: "node", format: "esm", target: "node18", legalComments: "none", external: ["@allocyn/sdk"],
 });
 fs.chmodSync(path.join(root, "dist/cli.js"), 0o755);
 console.log("built packages/cli/dist/cli.js");

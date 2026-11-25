@@ -18,6 +18,8 @@ node packages/cli/dist/cli.js jobs --status VERIFIED --limit 5
 node packages/cli/dist/cli.js proof job-1
 node packages/cli/dist/cli.js badge job-1 --url
 node packages/cli/dist/cli.js evidence rcpt-1
+node packages/cli/dist/cli.js proof job-1 > proof.json
+node packages/cli/dist/cli.js verify proof.json --chain   # no --api needed
 node packages/cli/dist/cli.js prepare job-2 --action accept --actor 0xYourAddress
 
 # These read the optional database copy (see Database copy):
@@ -28,7 +30,7 @@ node packages/cli/dist/cli.js address 0xYourAddress
 node packages/cli/dist/cli.js events --after 0 --limit 20 --wait 15
 ```
 
-`evidence` downloads the delivered page on your machine and compares it with the receipt (see [Verification results](verification-results.html)). `prepare` only reads: it shows what a person would sign and sends nothing.
+`verify` checks a saved [proof pack](verification-results.html) on your machine, without the API; `--chain` re-reads the contract and needs the `@allocyn/sdk` package installed next to the CLI, `-` reads standard input. `evidence` downloads the delivered page on your machine and compares it with the receipt (see [Verification results](verification-results.html)). `prepare` only reads: it shows what a person would sign and sends nothing.
 
 `stats`, `address` and `events` need an API that has a [database copy](database.html); without one they exit `1` with `COPY_UNAVAILABLE`. `jobs` with `--q` or `--updated-since` reads the copy too. `events` prints a `cursor`: pass it back as `--after` to continue, and use `--wait` to hold the request until something new arrives. None of this is real time: events show what the indexer has seen.
 

@@ -11,3 +11,5 @@ export { PHASE_LABEL } from "./core/contract/tx.ts";
 export { createChainGuard } from "./chain.ts";
 export { checkEvidence, EVIDENCE_MAX_BYTES } from "./evidence.ts";
 export type { EvidenceCheck, EvidenceVerdict, EvidenceReceipt, EvidenceOptions } from "./evidence.ts";
+export { verifyProofPack, unwrapProofPack, buildProofFacts, proofDigest, canonicalProofJson, isFinalJob, PROOF_FORMAT, PROOF_FORMAT_VERSION } from "./proof.ts";
+export type { ProofFacts, ProofCheck, ProofVerification, ProofReader, VerifyProofOptions } from "./proof.ts";

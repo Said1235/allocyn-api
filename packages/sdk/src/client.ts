@@ -97,7 +97,7 @@ export interface LimitsReport {
   contractSourceSha256: string;
 }
 
-export const SDK_VERSION = "0.2.0";
+export const SDK_VERSION = "0.3.0";
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 

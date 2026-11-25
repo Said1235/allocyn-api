@@ -41,6 +41,7 @@ export const SCHEMAS: Record<string, S> = {
   ContractLimits: obj({ minCriteria: int, maxCriteria: int, maxTitleLength: int, maxDescriptionLength: int, maxCriterionLength: int, maxUrlLength: int, maxContentBytes: int, minEvidenceExcerptLength: int, maxEvidenceExcerptLength: int, maxDeliveriesPerJob: int }),
   Criterion: obj({ id: str, text: str }),
   Proof: obj({
+    format: { type: "string", enum: ["allocyn.proof"], description: "Marks the answer as a portable proof pack." }, formatVersion: { type: "integer", enum: [1] },
     jobId: str, status: { type: "string", enum: JOB_STATUS }, final: { type: "boolean" },
     consistency: { type: "string", enum: ["latest", "final"] }, readAt: { type: "string", format: "date-time" },
     network: obj({ name: str, chainId: int }), contractUrl: str,
@@ -161,7 +162,7 @@ export function buildOpenApi(cfg: Pick<ApiConfig, "apiBaseUrl" | "network">): S 
   return {
     openapi: "3.1.0",
     info: {
-      title: "Allocyn API", version: "1.7.0",
+      title: "Allocyn API", version: "1.8.0",
       description: "Read-only REST API over the Allocyn contract on GenLayer. It reads the contract; it holds no database, no wallet and no key. Writes (create, accept, submit, evaluate) are signed by the caller's own wallet with @allocyn/sdk.",
     },
     servers: [{ url: cfg.apiBaseUrl }],

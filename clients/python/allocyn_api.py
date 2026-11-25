@@ -101,7 +101,7 @@ class AllocynApi:
         return self._get(f"/v1/jobs/{_q(job_id)}", {"consistency": consistency})
 
     def get_job_proof(self, job_id: str, *, consistency: Optional[str] = None) -> Any:
-        """Proof summary of a job. A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself."""
+        """Proof pack of a job. A portable proof pack, safe to save and send as a file (format: "allocyn.proof", version 1)."""
         return self._get(f"/v1/jobs/{_q(job_id)}/proof", {"consistency": consistency})
 
     def get_job_badge(self, job_id: str, *, consistency: Optional[str] = None) -> str:

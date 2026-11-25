@@ -62,6 +62,45 @@ const check = await checkEvidence(receipt);   // { status, reason, currentHash, 
 
 The CLI exits with `0` only when the page is `unchanged`, and with `4` otherwise. An unchanged page says nothing about whether the verdict was **right**. The comparison assumes the recorded hash is of the raw bytes, as documented above; this has been tested with a stand-in page and the simulated contract, not against an evaluated receipt on the live network.
 
+## Check a proof pack without trusting the API
+
+`GET /v1/jobs/{id}/proof` returns a **proof pack**: one JSON file (`format: "allocyn.proof"`, version 1) with the job's written terms, its parties, every delivery with the per-criterion verdicts, the contract it lives in and a SHA-256 digest of those facts. Save it, attach it to an email or commit it to a repository. The verification page also offers it as a download.
+
+Anyone can then check the file themselves. The check does not ask the Allocyn API anything:
+
+```bash
+curl -s https://your-api/v1/jobs/job-1/proof > proof.json
+allocyn verify proof.json            # offline checks only
+allocyn verify proof.json --chain    # also re-reads the contract (needs @allocyn/sdk installed)
+allocyn verify proof.json --chain --evidence   # and downloads each judged page
+```
+
+```ts
+import { createAllocynClient, verifyProofPack } from "@allocyn/sdk";
+const allocyn = await createAllocynClient();
+const result = await verifyProofPack(pack, { reader: allocyn });   // pack or the { success, data } answer
+// result.verdict: "verified" | "consistent" | "mismatch" | "invalid"
+```
+
+| Check | What it does |
+|---|---|
+| `format` | The file is an `allocyn.proof` pack of a version this SDK understands. |
+| `digest` | The facts hash to the digest in the file, so the file was not altered. |
+| `contract` | The contract address, chain and audited source hash are the ones this SDK knows. |
+| `hashes` | The job's terms hash and agreement hash recompute from its written terms and parties. |
+| `consistency` | The parts of the pack agree with each other (delivery numbers, verdicts, `final`). |
+| `chain` | The job and every delivery match what the contract returns now. Only with a reader or `--chain`. |
+| `evidence` | Optional. Each judged page still has the bytes it had when it was judged. A change is a warning, not a failure. |
+
+`verified` means every check passed, including the fresh read of the contract. `consistent` means everything that needs no network passed, but the contract was **not** read: an attacker who also recomputes the digest passes those, and only `chain` catches them. `mismatch` means a check failed. For a job that was not final in the pack, a `chain` failure can simply mean the job moved on; fetch a new pack. The CLI exits `0` for `verified` and `consistent`, `1` for `mismatch` and `invalid`, and `3` when the file cannot be read.
+
+What a pack does not do:
+
+- It is **not a signature**. The digest only shows that the file was not altered after it was made; reading the contract is what proves the facts.
+- The contract does not store transaction hashes, so the pack has none. `contractUrl` opens the contract on the explorer.
+- It says the work was judged, not that it is good. `VERIFIED` is not a payment, an escrow or a guarantee of quality.
+- Quotes from the delivered page (`evidenceExcerpt`) are left out on purpose: they are third-party text.
+
 ## Reading a verdict responsibly
 
 - A verdict comes from LLM-assisted validators under consensus. Treat it as a **documented, reproducible judgement against written criteria**, not as proof of quality.

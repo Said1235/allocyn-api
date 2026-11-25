@@ -1,6 +1,6 @@
 # Allocyn API reference for agents
 
-Generated from API 1.7.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
+Generated from API 1.8.0. Every endpoint is `GET`. Answers are JSON `{ success, data }` or `{ success: false, error }`, except the badge (SVG).
 
 | Endpoint | MCP tool | Parameters | What it does |
 |---|---|---|---|
@@ -12,7 +12,7 @@ Generated from API 1.7.0. Every endpoint is `GET`. Answers are JSON `{ success, 
 | `GET /v1/events` | `list_events` | `?after` (integer), `?limit` (integer, max 100), `?job` (string), `?type` (job_created, job_accepted, delivery_submitted, delivery_evaluated, status_changed), `?worker` (string), `?client` (string), `?wait` (integer, max 25) | Feed of job events. What changed in the jobs, oldest first: a job was created or accepted, a delivery came in or got its verdict, a status moved. |
 | `GET /v1/addresses/{address}` | `get_address_record` | `address` | What the copy holds about an address. For one wallet address: how many jobs it created (as client) and accepted (as worker) in each status, how many deliveries it made and the verdicts they got, and its five newest jobs on each side. |
 | `GET /v1/jobs/{jobId}` | `get_job` | `jobId`, `?consistency` (latest or final) | Read a job. The job's terms, parties, status and receipt ids, read from the contract. |
-| `GET /v1/jobs/{jobId}/proof` | `get_job_proof` | `jobId`, `?consistency` (latest or final) | Proof summary of a job. A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. |
+| `GET /v1/jobs/{jobId}/proof` | `get_job_proof` | `jobId`, `?consistency` (latest or final) | Proof pack of a job. A portable proof pack, safe to save and send as a file (format: "allocyn.proof", version 1). |
 | `GET /v1/jobs/{jobId}/badge.svg` | REST only | `jobId`, `?consistency` (latest or final) | Status badge (SVG). A small SVG badge with the job's status, for a README or a portfolio: ![job](https://your-api/v1/jobs/job-1/badge.svg). |
 | `GET /v1/jobs/{jobId}/wait` | `wait_for_job` | `jobId`, `?since` (string), `?timeout` (integer, max 25), `?consistency` (latest or final) | Wait for a job to change. Long poll, instead of webhooks. |
 | `GET /v1/jobs/{jobId}/prepare` | `prepare_action` | `jobId`, `?action` (accept, submit, evaluate), `?deliveryUrl` (string), `?actor` (string), `?consistency` (latest or final) | Prepare an action for the person to sign. Checks whether accepting, delivering or evaluating is possible on this job right now, and says exactly what the person would sign: the contract call, the SDK call and a link to the Allocyn app. |

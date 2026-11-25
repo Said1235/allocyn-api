@@ -68,7 +68,8 @@ export async function renderVerifyPage(ctx: Ctx, consistency: "latest" | "final"
   }).join("");
   const lastReceipt = [...deliveries].reverse().find((d) => d.status === "EVALUATED");
   const how = [
-    `curl -s ${api}/v1/jobs/${esc(job.id)}/proof`,
+    `curl -s ${api}/v1/jobs/${esc(job.id)}/proof > proof.json`,
+    `allocyn verify proof.json --chain`,
     lastReceipt ? `allocyn evidence ${esc(lastReceipt.receiptId)} --api ${api}` : null,
   ].filter(Boolean).join("\n");
   const description = `${job.id} is ${job.status}${proof.final ? " (final)" : ""}: ${job.criteria.length} written criteria. Validators judged a public page against them. Not a payment, escrow or guarantee of quality.`;
@@ -77,6 +78,7 @@ export async function renderVerifyPage(ctx: Ctx, consistency: "latest" | "final"
 <h2>Deliveries</h2>${deliveries.length ? `<div class="box tw"><table><thead><tr><th>#</th><th>Page</th><th>Receipt</th><th>Evidence</th></tr></thead><tbody>${deliveryRows}</tbody></table></div>` : `<div class="box"><div class="row"><span class="t">No delivery yet.</span></div></div>`}
 <h2>Parties</h2><div class="box tw"><table><tbody><tr><th>Client</th><td title="${esc(job.client)}"><code>${esc(short(job.client))}</code></td></tr><tr><th>Worker</th><td title="${esc(job.worker ?? "")}"><code>${esc(short(job.worker))}</code></td></tr></tbody></table></div>
 <h2>Check it yourself</h2><div class="box"><pre>${how}</pre></div>
+<p class="note" style="border:0;margin:10px 0 0;padding:0"><a href="/v1/jobs/${esc(encodeURIComponent(job.id))}/proof" download="allocyn-proof-${esc(job.id)}.json">Download the proof pack (JSON)</a>. Anyone can check the file against the contract without trusting this page: <code>allocyn verify</code> or <code>verifyProofPack()</code> from @allocyn/sdk.</p>
 <p class="note">Read from the contract at ${esc(proof.readAt)} (${esc(proof.consistency)} consistency). Digest of these facts: <code>${esc(proof.digest.value.slice(0, 16))}…</code>. <a href="${esc(proof.contractUrl)}" rel="noopener noreferrer">Contract on the explorer</a>.<br>
 VERIFIED means validators judged a public page against written criteria. It is not a payment, an escrow, a dispute resolution or a guarantee of quality. ${proof.final ? "" : "This job is not final and can still change. "}The delivered page is third-party content and can change after it was judged.</p>`;
   return { ...layout(`${job.id} · ${job.status} · Allocyn`, description, body, 200), final: proof.final };

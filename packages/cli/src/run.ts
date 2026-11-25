@@ -4,14 +4,20 @@
  * 4 (evidence only) the page changed or could not be compared.
  */
 import { checkEvidence } from "../../sdk/src/evidence.ts";
+import { verifyProofPack } from "../../sdk/src/proof.ts";
+import type { ProofReader, ProofVerification } from "../../sdk/src/proof.ts";
 
-export const CLI_VERSION = "0.3.0";
+export const CLI_VERSION = "0.4.0";
 
 export interface Io {
   fetch: typeof fetch;
   out: (s: string) => void;
   err: (s: string) => void;
   env: Record<string, string | undefined>;
+  /** `verify` only: reads a file, or standard input when the path is "-". */
+  readFile?: (path: string) => Promise<string>;
+  /** `verify --chain` only: a reader of the contract for this network. Without it the command says it is unavailable. */
+  chainReader?: (network: string, final: boolean) => Promise<ProofReader>;
 }
 
 const HELP = `allocyn ${CLI_VERSION}: read Allocyn jobs and receipts from the API (read-only)
@@ -41,6 +47,10 @@ Commands:
                                      Check an action and show what the person would sign (sends nothing)
   evidence <rcpt-id>                 Has the delivered page changed since it was judged?
                                      (downloads the page on this machine; exit 4 unless unchanged)
+  verify <proof.json|->              Check a saved proof pack (from "allocyn proof <job-id>" or /v1/jobs/{id}/proof)
+        [--chain] [--evidence] [--json]   --chain re-reads the contract itself, without this API (needs @allocyn/sdk);
+                                     --evidence also downloads each judged page. Needs no --api.
+                                     Exit 0 verified or consistent, 1 the pack failed a check, 3 could not read it
 
 Options:
   --api <url>            Base URL of the API (or set ALLOCYN_API_URL)
@@ -66,7 +76,7 @@ function parse(argv: string[]) {
         const v = inline ?? argv[++i];
         if (v === undefined || v.startsWith("--")) throw new Usage(`--${k} needs a value.`);
         flags[k] = v;
-      } else if (["deep", "url", "envelope", "help", "version"].includes(k)) flags[k] = true;
+      } else if (["deep", "url", "envelope", "help", "version", "chain", "evidence", "json"].includes(k)) flags[k] = true;
       else throw new Usage(`Unknown option --${k}. Try --help.`);
     } else pos.push(a);
   }
@@ -75,11 +85,37 @@ function parse(argv: string[]) {
 
 const one = (pos: string[], name: string) => { if (pos.length !== 2) throw new Usage(`Usage: allocyn ${pos[0]} <${name}>`); return encodeURIComponent(pos[1]!); };
 
+function describe(r: ProofVerification): string {
+  const mark = { pass: "✓", fail: "✗", warn: "!", skipped: "-" } as const;
+  const head = { verified: `VERIFIED: ${r.jobId} matches the contract as read just now.`, consistent: `CONSISTENT: ${r.jobId} passes every check that needs no network. The contract was NOT read (add --chain).`, mismatch: `MISMATCH: ${r.jobId ?? "this file"} failed at least one check.`, invalid: "INVALID: this is not an Allocyn proof pack." }[r.verdict];
+  return [head, "", ...r.checks.map((c) => `  ${mark[c.status]} ${c.id.padEnd(11)} ${c.detail}`), "", r.caveat].join("\n");
+}
+
+async function verifyCommand(pos: string[], flags: Record<string, string | true>, io: Io): Promise<number> {
+  if (pos.length !== 2) throw new Usage("Usage: allocyn verify <proof.json|-> [--chain] [--evidence]");
+  if (!io.readFile) throw new Usage("This build cannot read files.");
+  let text: string;
+  try { text = await io.readFile(pos[1]!); } catch (e) { io.err(`Could not read ${pos[1]}: ${e instanceof Error ? e.message : String(e)}`); return 3; }
+  let input: unknown;
+  try { input = JSON.parse(text); } catch { io.err(`${pos[1]} is not JSON.`); return 3; }
+  let reader: ProofReader | undefined;
+  if (flags.chain) {
+    const d = (input as any)?.data ?? input;
+    if (!io.chainReader) { io.err("--chain is not available in this build. Use verifyProofPack() from @allocyn/sdk with an AllocynClient."); return 3; }
+    try { reader = await io.chainReader(String(d?.network?.name ?? "studionet"), d?.final === true); }
+    catch (e) { io.err(`--chain needs the @allocyn/sdk package next to the CLI (npm install @allocyn/sdk): ${e instanceof Error ? e.message : String(e)}`); return 3; }
+  }
+  const result = await verifyProofPack(input, { ...(reader ? { reader } : {}), checkEvidence: flags.evidence === true, fetch: io.fetch });
+  io.out(flags.json ? JSON.stringify(result, null, 2) : describe(result));
+  return result.verdict === "verified" || result.verdict === "consistent" ? 0 : 1;
+}
+
 export async function run(argv: string[], io: Io): Promise<number> {
   try {
     const { flags, pos } = parse(argv);
     if (flags.version) { io.out(CLI_VERSION); return 0; }
     if (flags.help || pos.length === 0) { io.out(HELP); return pos.length === 0 && !flags.help ? 2 : 0; }
+    if (pos[0] === "verify") return await verifyCommand(pos, flags, io);
     const apiRaw = (flags.api as string | undefined) ?? io.env.ALLOCYN_API_URL;
     if (!apiRaw) throw new Usage("Say which API to read: --api https://your-api.example, or set ALLOCYN_API_URL.");
     let api: URL; try { api = new URL(apiRaw); } catch { throw new Usage(`"${apiRaw}" is not a valid URL.`); }

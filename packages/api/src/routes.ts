@@ -129,8 +129,8 @@ export const ROUTES: Route[] = [
     handler: async (ctx, c) => ctx.client(c).getJob(ctx.params.jobId!),
   },
   {
-    method: "GET", path: "/v1/jobs/{jobId}/proof", operationId: "getJobProof", tag: "Jobs", summary: "Proof summary of a job",
-    description: "A compact, shareable summary of a job: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. The digest is not a signature. `final: true` means the job cannot change any more.",
+    method: "GET", path: "/v1/jobs/{jobId}/proof", operationId: "getJobProof", tag: "Jobs", summary: "Proof pack of a job",
+    description: "A portable proof pack, safe to save and send as a file (`format: \"allocyn.proof\"`, version 1). It holds: the contract it lives in, its terms, parties, status and every delivery with the per-criterion verdicts, plus a SHA-256 digest of those facts and the steps to check them against the contract yourself. The digest is not a signature. `final: true` means the job cannot change any more. Anyone can check a saved pack without trusting this API: `verifyProofPack()` in @allocyn/sdk or `allocyn verify proof.json --chain` re-read the contract and compare. The contract stores no transaction hashes, so the pack has none.",
     pathParams: [jobId], chainRead: true, cache: "no-store", schemaRef: "Proof", errors: [400, 404, 429, 502], finalWhen: (d) => d.final === true,
     handler: async (ctx, c) => buildProof(ctx, c),
   },
