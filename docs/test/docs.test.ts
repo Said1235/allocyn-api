@@ -165,3 +165,12 @@ test("activity panel: built, linked from the landing, reads only public routes a
   for (const p of paths) assert.ok(["/v1/health", "/v1/stats", "/v1/events", "/v1/addresses"].includes(p), p);
   assert.ok(!/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(js));
 });
+
+test("landing links to the live panel (hero, its own section, closing) and the table of contents can be collapsed", () => {
+  const html = read("index.html");
+  assert.ok((html.match(/href="activity\.html"/g) ?? []).length >= 4, "nav, hero, live section, closing");
+  assert.ok(html.includes('id="live"'));
+  const page = read("quickstart.html");
+  assert.match(page, /<details class="tocd" id="tocd" open><summary>On this page<\/summary>/);
+  assert.ok(read("app.js").includes("allocyn.docs.toc"));
+});

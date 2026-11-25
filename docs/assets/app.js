@@ -59,6 +59,13 @@
     });
   });
 
+  // "On this page": collapsible, remembers its state
+  var tocd = document.getElementById("tocd");
+  if (tocd) {
+    if (store.get("allocyn.docs.toc") === "closed") tocd.removeAttribute("open");
+    tocd.addEventListener("toggle", function () { store.set("allocyn.docs.toc", tocd.open ? "open" : "closed"); });
+  }
+
   // toc highlight
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll("aside.toc a"));
   if (tocLinks.length && "IntersectionObserver" in window) {

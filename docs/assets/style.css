@@ -117,7 +117,13 @@ blockquote p{margin:6px 0}
 .diagram .n:nth-of-type(2){transition-delay:.08s}.diagram .n:nth-of-type(3){transition-delay:.16s}.diagram .n:nth-of-type(4){transition-delay:.24s}.diagram .n:nth-of-type(5){transition-delay:.32s}.diagram .n:nth-of-type(6){transition-delay:.4s}.diagram .n:nth-of-type(7){transition-delay:.48s}
 @media(prefers-reduced-motion:reduce){.diagram .dot{display:none}.diagram .edge.dash{animation:none}.js .diagram .n,.js .diagram .edge,.js .diagram text.sub{opacity:1;transform:none;transition:none}}
 aside.toc{position:sticky;top:var(--header-h);height:calc(100vh - var(--header-h));overflow:auto;padding:32px 16px;font-size:13.5px}
-aside.toc b{display:block;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+aside.toc summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ink-3);font-weight:600;margin-bottom:8px;border-radius:6px}
+aside.toc summary::-webkit-details-marker{display:none}
+aside.toc summary::after{content:"";width:7px;height:7px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s}
+aside.toc details:not([open]) summary{margin-bottom:0}
+aside.toc details:not([open]) summary::after{transform:rotate(-45deg)}
+aside.toc summary:hover{color:var(--ink)}
+@media(prefers-reduced-motion:reduce){aside.toc summary::after{transition:none}}
 aside.toc a{display:block;padding:3px 0;color:var(--ink-2);text-decoration:none}
 aside.toc a.h3{padding-left:12px}
 aside.toc a:hover,aside.toc a.on{color:var(--accent-ink)}

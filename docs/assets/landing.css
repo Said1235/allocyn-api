@@ -266,3 +266,10 @@ html.js noscript{display:none}
 .hero-copy .rel i{flex:none;width:7px;height:7px;border:solid var(--ink-3);border-width:2px 2px 0 0;transform:rotate(45deg);margin-left:-2px;transition:transform .2s,border-color .2s}
 .hero-copy .rel:hover{border-color:var(--accent);background:var(--surface-2)}
 .hero-copy .rel:hover i{transform:translateX(3px) rotate(45deg);border-color:var(--accent)}
+
+/* live panel entry */
+.btn.live .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+.live-sec{padding-top:0}
+.live-card{display:flex;gap:20px 32px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line-strong);border-radius:16px;padding:clamp(20px,3vw,32px);background:linear-gradient(180deg,var(--surface-2),var(--surface))}
+.live-card h2{font:600 clamp(20px,2.4vw,28px)/1.2 var(--font-display);letter-spacing:-.02em;margin:0 0 6px}
+.live-card .sub{margin:0;max-width:60ch}
