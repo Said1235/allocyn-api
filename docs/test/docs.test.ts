@@ -153,3 +153,15 @@ test("MCP: the docs page lists every tool, and llms.txt lists every route and to
   assert.match(page, /<strong>not<\/strong> yet been tried in a desktop agent/);
   assert.ok(!/localhost/.test(llms) || process.env.API_BASE_URL === undefined, "llms.txt names the real base URL when one is configured");
 });
+
+test("activity panel: built, linked from the landing, reads only public routes and never writes HTML from data", () => {
+  const html = read("activity.html");
+  assert.ok(read("index.html").includes('href="activity.html"'));
+  for (const id of ["fresh", "bar", "legend", "t-status", "days", "feed", "addr-form"]) assert.ok(html.includes(`id="${id}"`), id);
+  assert.ok(/The contract has no jobs yet/.test(html));
+  const js = read("activity.js");
+  assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(/.test(js), "data is untrusted: textContent only");
+  const paths = [...js.matchAll(/get\("([^"?]+)/g)].map((m) => m[1]!.replace(/\/$/, ""));
+  for (const p of paths) assert.ok(["/v1/health", "/v1/stats", "/v1/events", "/v1/addresses"].includes(p), p);
+  assert.ok(!/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(js));
+});

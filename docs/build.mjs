@@ -484,7 +484,7 @@ async function landingHtml(links) {
 <script>document.documentElement.classList.add("js")</script><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"></head>
 <body class="lp"><a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="index.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a>
-<nav class="nav" id="lp-nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
+<nav class="nav" id="lp-nav" aria-label="Main"><a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="activity.html">Activity</a><a href="faq.html">FAQ</a>${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">GitHub</a>` : ""}</nav><span class="spacer"></span>
 ${links.appUrl ? `<a class="btn sm" href="${esc(links.appUrl)}" rel="noopener">Open the app</a>` : ""}
 <button class="icon" id="lp-menu" type="button" aria-expanded="false" aria-controls="lp-nav">Menu</button>
 <button class="icon" id="theme" type="button"></button></header>
@@ -527,13 +527,47 @@ ${flowHtml()}<noscript><figure class="diagram" style="margin:0">${DIAGRAMS.job}<
 <section class="block closing"><div class="closing-bg" aria-hidden="true"></div><div class="wrap"><h2 class="rv">Ready to build with verified work?</h2><p class="sub rv">Start integrating verifiable work infrastructure into your applications and AI agents.</p>
 <div class="cta rv"><a class="btn primary" href="quickstart.html">Get Started</a><a class="btn" href="introduction.html">Read the Documentation</a><a class="btn ghost" href="rest-reference.html">Explore the API</a>${ext("Open the app", links.appUrl, "ghost")}${ext("View on GitHub", links.repoUrl, "ghost")}</div></div></section>
 </main>
-<footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
+<footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="introduction.html">Introduction</a><a href="limits.html">Limits</a><a href="errors.html">Errors</a><a href="security-privacy.html">Security</a><a href="networks.html">Networks</a><a href="activity.html">Activity</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
 <script src="app.js"></script><script src="landing.js"></script></body></html>`;
+}
+
+function activityHtml(links) {
+  const nav = `<a href="quickstart.html">Quickstart</a><a href="rest-reference.html">REST</a><a href="sdk-reference.html">SDK</a><a href="agents-mcp.html">Agents</a><a href="activity.html" aria-current="page">Activity</a><a href="faq.html">FAQ</a>`;
+  return `<!doctype html><html lang="en" data-root=""><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allocyn activity</title><meta name="description" content="Public activity of the Allocyn contract on GenLayer Studionet, read from the database copy: jobs by status, deliveries by verdict, recent events.">
+<link rel="icon" href="${LOGO}"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="landing.css"><link rel="stylesheet" href="activity.css"></head>
+<body class="lp act"><a class="skip" href="#main">Skip to content</a>
+<header class="top"><a class="brand" href="index.html"><img src="${LOGO}" alt="" width="26" height="26">Allocyn<small>API &amp; SDK</small></a><nav class="nav" id="lp-nav" aria-label="Main">${nav}</nav><span class="spacer"></span><button class="icon" id="lp-menu" type="button" aria-expanded="false" aria-controls="lp-nav">Menu</button><button class="icon" id="theme" type="button"></button></header>
+<main id="main"><h1>Activity</h1>
+<p class="lede">What the Allocyn contract on Studionet has recorded, as seen by the indexer. It is a copy refreshed about every ten minutes, not a live feed: check the chip before relying on a number.</p>
+<span class="fresh" id="fresh" data-state="idle" role="status"><span id="fresh-text">Loading…</span></span>
+<div class="err" id="err" hidden><p id="err-text"></p><button class="linkbtn" id="retry" type="button">Try again</button></div>
+<div class="grid" id="panel">
+<section class="card wide" aria-labelledby="h-jobs"><h2 id="h-jobs">Jobs</h2><p class="sub">All jobs in the copy, by status. Copied through <code id="through">…</code>.</p>
+<div class="hero-n" id="hero-n">–</div>
+<div class="bar" id="bar" role="img"></div><div class="empty" id="empty-status" hidden>The contract has no jobs yet. This panel fills in as soon as the first one is created.</div>
+<ul class="legend" id="legend"></ul>
+<button class="linkbtn" data-view="tv-status" aria-expanded="false" type="button" style="margin-top:14px">Show as table</button>
+<div id="tv-status" hidden><table class="t"><thead><tr><th>Status</th><th class="num">Jobs</th><th class="num">Share</th></tr></thead><tbody id="t-status"></tbody></table></div></section>
+<section class="card" aria-labelledby="h-del"><h2 id="h-del">Deliveries by verdict</h2><p class="sub"><span id="n-del">0</span> deliveries in total. A verdict is the validators' answer, not a guarantee of quality.</p><div id="verdicts"></div></section>
+<section class="card" aria-labelledby="h-days"><h2 id="h-days">Jobs seen per day</h2><p class="sub">Last 14 days, by when the indexer first saw each job (UTC).</p><div class="days" id="days" role="img" aria-label="Jobs seen per day, last 14 days"></div><div class="empty" id="days-empty" hidden>No job was seen in the last 14 days.</div>
+<button class="linkbtn" data-view="tv-days" aria-expanded="false" type="button" style="margin-top:14px">Show as table</button>
+<div id="tv-days" hidden><table class="t"><thead><tr><th>Day</th><th class="num">Jobs</th></tr></thead><tbody id="t-days"></tbody></table></div></section>
+<section class="card wide" aria-labelledby="h-feed"><h2 id="h-feed">Recent events</h2><p class="sub">Newest first. Times are when the indexer detected the change, not when it happened on the contract.</p><ul class="feed" id="feed"></ul><div class="empty" id="feed-empty" hidden>No events yet. Nothing has been created, accepted or delivered.</div></section>
+<section class="card wide" aria-labelledby="h-addr"><h2 id="h-addr">Look up an address</h2><p class="sub">How many jobs and deliveries an address has. Counts only: no score, no ranking.</p>
+<form id="addr-form"><label class="sr" for="addr" style="position:absolute;left:-999px">Address</label><input id="addr" placeholder="0x…" autocomplete="off" spellcheck="false"><button class="btn sm primary" type="submit">Look up</button></form><div id="addr-out" aria-live="polite"></div></section>
+</div>
+<p class="note">Data comes from <a href="rest-reference.html">the public API</a> (<code>/v1/stats</code>, <code>/v1/events</code>, <code>/v1/addresses</code>). It refreshes by itself every 30 seconds while this tab is visible. Jobs created since the last sync are not counted yet; open a job's verify page for its live state.</p></main>
+<footer class="lp-foot"><div class="wrap"><span>Allocyn API and SDK · docs ${VERSION}</span><nav aria-label="Footer"><a href="index.html">Landing</a><a href="introduction.html">Introduction</a><a href="changelog.html">Changelog</a>${links.appUrl ? `<a href="${esc(links.appUrl)}" rel="noopener">App</a>` : ""}${links.repoUrl ? `<a href="${esc(links.repoUrl)}" rel="noopener">Repository</a>` : ""}</nav></div></footer>
+<script src="app.js"></script><script src="activity.js"></script></body></html>`;
 }
 fs.mkdirSync(path.join(OUT, "brands"), { recursive: true });
 for (const f of fs.readdirSync(BRANDS)) if (/\.(png|svg)$/.test(f)) fs.copyFileSync(path.join(BRANDS, f), path.join(OUT, "brands", f));
 fs.copyFileSync(path.join(here, "assets/landing.css"), path.join(OUT, "landing.css"));
 fs.copyFileSync(path.join(here, "assets/landing.js"), path.join(OUT, "landing.js"));
+for (const f of ["activity.js", "activity.css"]) fs.copyFileSync(path.join(here, "assets", f), path.join(OUT, f));
+fs.writeFileSync(path.join(OUT, "activity.html"), activityHtml(loadLinks()));
 fs.writeFileSync(path.join(OUT, "index.html"), await landingHtml(loadLinks()));
 fs.writeFileSync(path.join(OUT, "llms.txt"), llmsTxt());
 fs.writeFileSync(path.join(OUT, "search-index.json"), JSON.stringify(index));

@@ -7,6 +7,12 @@ summary: What changed in each version of the API, SDK and docs.
 
 Versions: **API v1** (URL prefix `/v1`, release 1.7.0), **SDK 0.2.0**, **docs v1**. Breaking changes to the API will get a new prefix (`/v2`) and a new docs version; `/v1` will not change shape silently.
 
+## Docs: activity panel
+
+A public page, `activity.html`, shows what the contract has recorded as the indexer saw it: jobs by status, deliveries by verdict, jobs seen per day, recent events and an address lookup (counts only). It reads the public routes `/v1/health?deep=true`, `/v1/stats`, `/v1/events` and `/v1/addresses/{address}` from the same origin and refreshes every 30 seconds while the tab is visible. A chip says how old the copy is. No route changed.
+
+Not verified yet: it was checked with simulated data in a local browser (dark, light, phone, empty and error states). The deployed contract has no jobs, so the live page shows its empty state until the first job exists.
+
 ## 1.7.0 (API) · 0.3.0 (CLI)
 
 The routes and shapes of 1.0.0 to 1.6.0 did not change. Everything below is added.
