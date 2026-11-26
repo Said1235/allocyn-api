@@ -34,12 +34,12 @@ This repository is everything around that contract: a read-only API, a typed SDK
 
 ```mermaid
 flowchart LR
-  C([Client]) -- "writes terms" --> K[(Allocyn contract<br/>GenLayer Studionet)]
-  W([Worker]) -- "accepts, delivers a link" --> K
-  K -- "validators judge each criterion" --> V{{Validators}}
-  V -- "MET / NOT_MET / UNVERIFIABLE" --> K
-  K -- "read-only" --> A[REST API · MCP · SDK · CLI]
-  A --> X([Any app or agent])
+  C(["Client"]) -->|"writes terms"| K[("Allocyn contract on GenLayer Studionet")]
+  W(["Worker"]) -->|"accepts and delivers a link"| K
+  K -->|"validators judge each criterion"| V["Validators"]
+  V -->|"MET, NOT_MET or UNVERIFIABLE"| K
+  K -->|"read-only"| A["REST API, MCP, SDK and CLI"]
+  A --> X(["Any app or agent"])
 ```
 
 ## Highlights
@@ -104,19 +104,18 @@ The contract has no jobs yet at the time of writing, so `job-1` answers `JOB_NOT
 ## How it fits together
 
 ```mermaid
-flowchart TB
-  subgraph chain [GenLayer Studionet]
-    K[(Allocyn contract)]
-  end
-  subgraph api [Allocyn API on Vercel]
-    R[REST /v1] --- M[MCP /mcp] --- P[/verify pages and badges/]
-  end
-  K -- "reads" --> api
-  I[Indexer · GitHub Actions · every 10 min] -- "final reads" --> K
-  I -- "secret key, CI only" --> D[(Supabase Postgres<br/>RLS, read-only public key)]
-  api -- "public key, reads only" --> D
-  api --> S[SDK · CLI · Python · agents · your app]
-  S -. "writes: signed by the user's own wallet" .-> K
+flowchart LR
+  S["SDK, CLI, Python, agents and your app"]
+  API["Allocyn API on Vercel: REST, MCP, verify pages, badges"]
+  K[("Allocyn contract on GenLayer Studionet")]
+  D[("Supabase Postgres with row-level security")]
+  I["Indexer on GitHub Actions, every 10 minutes"]
+  S -->|"reads"| API
+  API -->|"reads"| K
+  API -->|"public key"| D
+  I -->|"final reads"| K
+  I -->|"secret key, CI only"| D
+  S -.->|"writes, signed by the user's wallet"| K
 ```
 
 ## What is in the repository
